@@ -3,7 +3,7 @@ library(readxl)
 library(stringr)
 
 # Create output directory if it doesn't exist
-out_dir <- file.path("data", "diagnosis")
+out_dir <- file.path("output", "diagnosis")
 if (!dir.exists(out_dir)) {
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 }
@@ -45,8 +45,8 @@ for (year_range in names(year_urls)) {
 }
 
 # Make sure output dir exists
-out_dir_xlsx <- file.path("data", "diagnosis")
-out_dir_csv  <- file.path("data", "diagnosis_csv")
+out_dir_xlsx <- file.path("output", "diagnosis")
+out_dir_csv  <- file.path("output", "diagnosis_csv")
 if (!dir.exists(out_dir_csv)) {
   dir.create(out_dir_csv, recursive = TRUE, showWarnings = FALSE)
 }
@@ -58,6 +58,23 @@ clean_names_for_csv <- function(x) {
   x <- gsub("[^a-z0-9]+", "_", x)  # non-alnum -> _
   x <- gsub("_+", "_", x)          # collapse multiple _
   x <- gsub("^_|_$", "", x)        # trim leading/trailing _
+  x
+}
+
+# ---- helper: clean the code values ----
+clean_code_values <- function(x) {
+  x <- as.character(x)
+  x <- trimws(x)
+  
+  # specifically remove the nasty '‡' + following spaces at the start
+  x <- gsub("^‡\\s*", "", x)
+  
+  # as an extra safety net, drop ANY non-alphanumeric junk at the start
+  x <- gsub("^[^A-Za-z0-9]+", "", x)
+  
+  # if you want to be extra strict, you can uppercase everything
+  x <- toupper(x)
+  
   x
 }
 
@@ -165,3 +182,464 @@ for (yr in year_ranges) {
   convert_diagnosis_file(yr)
 }
 
+### ===============================================================
+### ANALYSIS ON THE GENERATED CSV FILES
+### ===============================================================
+
+# We assume year_ranges and out_dir_csv are already defined above.
+
+# Only keep years for which CSV actually exists
+available_years <- year_ranges[
+  file.exists(file.path(out_dir_csv, paste0(year_ranges, ".csv")))
+]
+
+if (length(available_years) == 0) {
+  stop("No diagnosis CSV files found in ", out_dir_csv)
+}
+
+# Helper: convert year interval "2014-2015" -> mid year 2015 (numeric)
+interval_to_midyear <- function(x) {
+  as.numeric(sub(".*-", "", x))
+}
+
+# ---- 1. Load all CSVs into a single long table ----
+
+all_data_list <- list()
+
+for (yr in available_years) {
+  csv_path <- file.path(out_dir_csv, paste0(yr, ".csv"))
+  message("Loading ", csv_path)
+  
+  df <- read.csv(csv_path, stringsAsFactors = FALSE, check.names = FALSE)
+  
+  if (!("code" %in% names(df))) {
+    warning("No 'code' column in ", csv_path, " – skipping this file.")
+    next
+  }
+  if (!("all_diagnoses" %in% names(df))) {
+    warning("No 'all_diagnoses' column in ", csv_path, " – skipping this file.")
+    next
+  }
+  
+  # Clean the code
+  df$code <- clean_code_values(df$code)
+  
+  # Ensure numeric
+  df$all_diagnoses <- as.numeric(df$all_diagnoses)
+  
+  if (!("description" %in% names(df))) {
+    df$description <- NA_character_
+  }
+  
+  df$year_interval <- yr
+  df$year_mid      <- interval_to_midyear(yr)
+  
+  all_data_list[[yr]] <- df[, c("code", "description", "all_diagnoses",
+                                "year_interval", "year_mid")]
+}
+
+
+all_data <- do.call(rbind, all_data_list)
+
+# Make sure year_interval is character
+all_data$year_interval <- as.character(all_data$year_interval)
+
+# Total number of years we are considering
+n_years_total <- length(available_years)
+
+### ---------------------------------------------------------------
+### 1. Report codes not present in all years
+### ---------------------------------------------------------------
+
+# Presence of each code in which year intervals
+code_years_list   <- split(all_data$year_interval, all_data$code)
+code_years_unique <- lapply(code_years_list, function(x) sort(unique(x)))
+n_years_by_code   <- sapply(code_years_unique, length)
+
+codes_not_all_years <- names(code_years_unique)[
+  n_years_by_code < n_years_total
+]
+
+# Aggregate descriptions per code (some codes might have multiple descriptions across years)
+desc_by_code <- tapply(
+  all_data$description,
+  all_data$code,
+  function(x) {
+    u <- unique(na.omit(x))
+    if (length(u) == 0) NA_character_ else paste(u, collapse = " | ")
+  }
+)
+
+report_not_all <- data.frame(
+  code          = codes_not_all_years,
+  description   = unname(desc_by_code[codes_not_all_years]),
+  n_years       = n_years_by_code[codes_not_all_years],
+  years_present = sapply(code_years_unique[codes_not_all_years],
+                         paste, collapse = ", "),
+  stringsAsFactors = FALSE
+)
+
+# Sort for readability
+report_not_all <- report_not_all[order(report_not_all$n_years,
+                                       report_not_all$code), ]
+
+message("Number of codes NOT present in all years: ",
+        nrow(report_not_all))
+
+# Print a sample in console
+print(utils::head(report_not_all, 50))
+
+# Save full report to CSV
+not_all_path <- file.path(out_dir_csv, "codes_not_in_all_years.csv")
+write.csv(report_not_all, file = not_all_path, row.names = FALSE)
+message("Full 'not in all years' report written to: ", not_all_path)
+
+### ---------------------------------------------------------------
+### 2. Trend analysis for codes present in ALL years
+### ---------------------------------------------------------------
+
+codes_all_years <- names(code_years_unique)[
+  n_years_by_code == n_years_total
+]
+
+message("Number of codes present in ALL years: ",
+        length(codes_all_years))
+
+# Baseline years: 2015–2019 (i.e. intervals 2014-2015 ... 2018-2019)
+baseline_years  <- 2015:2019
+future_years    <- 2020:2024   # where we'll check for out-of-band increases
+
+alerts_list <- list()
+alert_idx <- 1
+
+for (cd in codes_all_years) {
+  df_code <- all_data[all_data$code == cd, ]
+  
+  # Drop rows with NA counts
+  df_code <- df_code[!is.na(df_code$all_diagnoses), ]
+  
+  # Extract a single description (first non-NA)
+  desc <- df_code$description[which(!is.na(df_code$description))[1]]
+  if (is.na(desc)) desc <- ""
+  
+  # Baseline subset: years 2015–2019
+  df_base <- df_code[df_code$year_mid %in% baseline_years, ]
+  # Need at least 2 points to fit a line
+  if (nrow(df_base) < 2) next
+  
+  # Linear regression of all_diagnoses ~ year_mid
+  fit <- lm(all_diagnoses ~ year_mid, data = df_base)
+  
+  # Future years where we have actuals
+  df_future <- df_code[df_code$year_mid %in% future_years, ]
+  if (nrow(df_future) == 0) next
+  
+  # Predictions with 95% prediction intervals
+  pred <- predict(
+    fit,
+    newdata  = data.frame(year_mid = df_future$year_mid),
+    interval = "prediction",
+    level    = 0.95
+  )
+  
+  # Make sure prediction rows align with df_future rows
+  df_future$pred       <- pred[, "fit"]
+  df_future$pred_lwr   <- pred[, "lwr"]
+  df_future$pred_upr   <- pred[, "upr"]
+  
+  # Identify years where actual value is ABOVE upper prediction bound
+  idx_up <- which(df_future$all_diagnoses > df_future$pred_upr)
+  if (length(idx_up) == 0) next
+  
+  df_anomalies <- df_future[idx_up, ]
+  df_anomalies$code        <- cd
+  df_anomalies$description <- desc
+  
+  # Extra: how far above the upper bound (percent)
+  df_anomalies$excess_pct <- 100 * (
+    (df_anomalies$all_diagnoses / df_anomalies$pred_upr) - 1
+  )
+  
+  alerts_list[[alert_idx]] <- df_anomalies
+  alert_idx <- alert_idx + 1
+}
+
+if (length(alerts_list) == 0) {
+  message("No codes with 2020–2024 all_diagnoses above 95% prediction interval.")
+} else {
+  alerts <- do.call(rbind, alerts_list)
+  
+  # Keep only informative columns and sort
+  alerts_report <- alerts[, c(
+    "code", "description",
+    "year_interval", "year_mid",
+    "all_diagnoses", "pred", "pred_lwr", "pred_upr",
+    "excess_pct"
+  )]
+  
+  alerts_report <- alerts_report[
+    order(alerts_report$code, alerts_report$year_mid),
+  ]
+  
+  # ---------------------------------------------------------------
+  # 2a. Filter out events with < 1000 diagnoses in that year
+  # ---------------------------------------------------------------
+  min_events_threshold <- 1000
+  alerts_report <- alerts_report[
+    alerts_report$all_diagnoses >= min_events_threshold, 
+  ]
+  
+  if (nrow(alerts_report) == 0) {
+    message(
+      "No alerts with all_diagnoses >= ", min_events_threshold,
+      " – skipping HTML report generation."
+    )
+  } else {
+    # Save filtered alerts as CSV
+    alerts_csv_path <- file.path(out_dir_csv, "diagnosis_trend_alerts.csv")
+    write.csv(alerts_report, file = alerts_csv_path, row.names = FALSE)
+    message("Trend alerts CSV written to: ", alerts_csv_path)
+    
+    ### ---- Build main HTML report ----
+    html_path <- file.path(out_dir_csv, "diagnosis_trend_report.html")
+    
+    html_header <- paste0(
+      "<!DOCTYPE html>\n",
+      "<html><head><meta charset='UTF-8'>",
+      "<title>Diagnosis Trend Report</title>",
+      "<style>",
+      "body { font-family: Arial, sans-serif; }",
+      "table { border-collapse: collapse; width: 100%; }",
+      "th, td { border: 1px solid #ccc; padding: 4px 8px; font-size: 12px; }",
+      "th { background: #f0f0f0; }",
+      ".code { font-family: monospace; }",
+      ".pos { color: #b30000; font-weight: bold; }",
+      "a { color: #004c99; text-decoration: none; }",
+      "a:hover { text-decoration: underline; }",
+      "</style>",
+      "</head><body>\n",
+      "<h1>Diagnosis codes with 2020–2024 counts above 95% prediction interval</h1>\n",
+      "<p>Baseline years for linear trend: 2015–2019 (intervals 2014–2015 to 2018–2019).</p>\n",
+      "<p>Only years with at least ", min_events_threshold, 
+      " diagnoses are shown in this report.</p>\n"
+    )
+    
+    table_header <- paste0(
+      "<table>\n<tr>",
+      "<th>Code</th>",
+      "<th>Description</th>",
+      "<th>Year interval</th>",
+      "<th>Mid year</th>",
+      "<th>Observed all_diagnoses</th>",
+      "<th>Predicted</th>",
+      "<th>Lower 95% PI</th>",
+      "<th>Upper 95% PI</th>",
+      "<th>% above upper PI</th>",
+      "</tr>\n"
+    )
+    
+    # Helper to make a safe ID/filename from a code
+    make_code_id <- function(cd) {
+      gsub("[^A-Za-z0-9]+", "_", cd)
+    }
+    
+    # Build table rows with clickable code/description
+    row_html <- apply(alerts_report, 1, function(r) {
+      code_raw <- r[["code"]]
+      code_id  <- make_code_id(code_raw)
+      detail_file <- paste0("code_", code_id, ".html")
+      
+      desc_raw <- ifelse(is.na(r[["description"]]), "", r[["description"]])
+      
+      code_link <- sprintf(
+        "<a href='%s'>%s</a>",
+        detail_file,
+        htmltools::htmlEscape(code_raw)
+      )
+      desc_link <- sprintf(
+        "<a href='%s'>%s</a>",
+        detail_file,
+        htmltools::htmlEscape(desc_raw)
+      )
+      
+      sprintf(
+        "<tr>
+          <td class='code'>%s</td>
+          <td>%s</td>
+          <td>%s</td>
+          <td>%s</td>
+          <td>%s</td>
+          <td>%0.1f</td>
+          <td>%0.1f</td>
+          <td>%0.1f</td>
+          <td class='pos'>%0.1f%%</td>
+        </tr>\n",
+        code_link,
+        desc_link,
+        r[["year_interval"]],
+        r[["year_mid"]],
+        format(as.numeric(r[["all_diagnoses"]]), big.mark = ",", scientific = FALSE),
+        as.numeric(r[["pred"]]),
+        as.numeric(r[["pred_lwr"]]),
+        as.numeric(r[["pred_upr"]]),
+        as.numeric(r[["excess_pct"]])
+      )
+    })
+    
+    html_footer <- "</table>\n</body></html>\n"
+    
+    # Write main HTML file
+    cat(html_header, table_header, paste(row_html, collapse = ""),
+        html_footer, file = html_path)
+    
+    message("HTML trend report written to: ", html_path)
+    
+    # -------------------------------------------------------------
+    # 2b. Per-code detail pages with charts & full time-series
+    # -------------------------------------------------------------
+    
+    codes_for_details <- unique(alerts_report$code)
+    
+    for (cd in codes_for_details) {
+      # All data for this code
+      df_code <- all_data[all_data$code == cd, , drop = FALSE]
+      df_code <- df_code[!is.na(df_code$all_diagnoses), , drop = FALSE]
+      df_code <- df_code[order(df_code$year_mid), , drop = FALSE]
+      
+      # Description (first non-NA)
+      desc <- df_code$description[which(!is.na(df_code$description))[1]]
+      if (is.na(desc)) desc <- ""
+      
+      # Baseline subset & model (same as before)
+      df_base <- df_code[df_code$year_mid %in% baseline_years, , drop = FALSE]
+      if (nrow(df_base) < 2) next  # defensive
+      
+      fit <- lm(all_diagnoses ~ year_mid, data = df_base)
+      
+      # Predictions + PI for ALL years for this code
+      pred_all <- predict(
+        fit,
+        newdata  = data.frame(year_mid = df_code$year_mid),
+        interval = "prediction",
+        level    = 0.95
+      )
+      
+      df_code$pred     <- pred_all[, "fit"]
+      df_code$pred_lwr <- pred_all[, "lwr"]
+      df_code$pred_upr <- pred_all[, "upr"]
+      
+      # Mark anomaly years (using same criteria as main analysis)
+      df_code$is_alert <- df_code$all_diagnoses > df_code$pred_upr &
+                          df_code$year_mid %in% future_years
+      
+      # ----------------- PLOT (PNG) -----------------
+      code_id   <- make_code_id(cd)
+      png_file  <- file.path(out_dir_csv, paste0("trend_", code_id, ".png"))
+      
+      y_min <- min(c(df_code$all_diagnoses, df_code$pred_lwr), na.rm = TRUE)
+      y_max <- max(c(df_code$all_diagnoses, df_code$pred_upr), na.rm = TRUE)
+      
+      png(png_file, width = 800, height = 600)
+      par(mar = c(5, 5, 5, 2))
+      
+      plot(
+        df_code$year_mid, df_code$all_diagnoses,
+        type = "b", pch = 16,
+        xlab = "Year (mid-point)",
+        ylab = "All diagnoses",
+        main = paste0(cd, " - ", substr(desc, 1, 80)),
+        ylim = c(y_min, y_max)
+      )
+      # Predicted line
+      lines(df_code$year_mid, df_code$pred, lty = 2)
+      # Prediction interval
+      lines(df_code$year_mid, df_code$pred_lwr, lty = 3)
+      lines(df_code$year_mid, df_code$pred_upr, lty = 3)
+      
+      # Labels on each point
+      text(
+        df_code$year_mid, df_code$all_diagnoses,
+        labels = format(df_code$all_diagnoses, big.mark = ",", scientific = FALSE),
+        pos = 3, cex = 0.7
+      )
+      
+      legend(
+        "topleft",
+        legend = c("Observed", "Predicted", "95% PI"),
+        lty    = c(1, 2, 3),
+        pch    = c(16, NA, NA),
+        bty    = "n"
+      )
+      
+      dev.off()
+      
+      # ----------------- DETAIL HTML -----------------
+      detail_file <- file.path(out_dir_csv, paste0("code_", code_id, ".html"))
+      
+      df_table <- df_code[, c(
+        "year_interval", "year_mid",
+        "all_diagnoses", "pred", "pred_lwr", "pred_upr", "is_alert"
+      )]
+      
+      table_rows <- apply(df_table, 1, function(r) {
+        sprintf(
+          "<tr>
+             <td>%s</td>
+             <td>%s</td>
+             <td>%s</td>
+             <td>%0.1f</td>
+             <td>%0.1f</td>
+             <td>%0.1f</td>
+             <td>%s</td>
+           </tr>\n",
+          r[["year_interval"]],
+          r[["year_mid"]],
+          format(as.numeric(r[["all_diagnoses"]]), big.mark = ",", scientific = FALSE),
+          as.numeric(r[["pred"]]),
+          as.numeric(r[["pred_lwr"]]),
+          as.numeric(r[["pred_upr"]]),
+          ifelse(as.logical(r[["is_alert"]]), "Yes", "")
+        )
+      })
+      
+      detail_html <- paste0(
+        "<!DOCTYPE html>\n<html><head><meta charset='UTF-8'>",
+        "<title>Trend detail for ", htmltools::htmlEscape(cd), "</title>",
+        "<style>",
+        "body { font-family: Arial, sans-serif; }",
+        "table { border-collapse: collapse; width: 100%; margin-top: 16px; }",
+        "th, td { border: 1px solid #ccc; padding: 4px 8px; font-size: 12px; }",
+        "th { background: #f0f0f0; }",
+        ".code { font-family: monospace; }",
+        ".alert { background-color: #ffe6e6; }",
+        "a { color: #004c99; text-decoration: none; }",
+        "a:hover { text-decoration: underline; }",
+        "</style>",
+        "</head><body>",
+        "<h1>Trend detail for code ", htmltools::htmlEscape(cd), "</h1>",
+        "<p><strong>Description:</strong> ", htmltools::htmlEscape(desc), "</p>",
+        "<p><a href='diagnosis_trend_report.html'>&larr; Back to main report</a></p>",
+        "<img src='", basename(png_file), 
+        "' alt='Trend chart for ", htmltools::htmlEscape(cd), 
+        "' style='max-width:100%;height:auto;border:1px solid #ccc;' />",
+        "<h2>Yearly data</h2>",
+        "<table>",
+        "<tr>",
+        "<th>Year interval</th>",
+        "<th>Mid year</th>",
+        "<th>Observed all_diagnoses</th>",
+        "<th>Predicted</th>",
+        "<th>Lower 95% PI</th>",
+        "<th>Upper 95% PI</th>",
+        "<th>Anomaly (above upper PI)</th>",
+        "</tr>",
+        paste(table_rows, collapse = ""),
+        "</table>",
+        "</body></html>"
+      )
+      
+      cat(detail_html, file = detail_file)
+      message("Detail HTML written for code ", cd, ": ", detail_file)
+    }
+  }
+}
