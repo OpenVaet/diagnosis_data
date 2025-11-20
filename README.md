@@ -1,5 +1,5 @@
 # Diagnosis Data
-Analytics on diagnose codes
+Analytics on diagnosis codes
 
 ## UK Diagnosis
 
