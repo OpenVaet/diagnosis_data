@@ -41,13 +41,24 @@ Data from [production-like.nhsd.io](https://production-like.nhsd.io/data-and-inf
 
 ## France
 
+### Morbidité hospitalière : mise à jour des données disponibles jusqu’en 2023
+
 Data from [drees.solidarites-sante.gouv.fr](https://drees.solidarites-sante.gouv.fr/communique-de-presse-jeux-de-donnees/jeux-de-donnees/250305_DATA_morbidite-hospitaliere)
 
-### Morbidité hospitalière : mise à jour des données disponibles jusqu’en 2023
 [Morbidité_hospitalière-Données_format_csv.zip](https://data.drees.solidarites-sante.gouv.fr/api/datasets/1.0/500_morbidite-hospitaliere/attachments/morbidite_hospitaliere_donnees_format_csv_zip/)
+
 [Anciennes régions.zip](https://data.drees.solidarites-sante.gouv.fr/api/datasets/1.0/500_morbidite-hospitaliere/attachments/anciennes_regions_zip/)
+
 **Note:** The "Anciennes régions.zip" data is provided on .IVT format, which requires the [Beyond 20/20 Professional Browser](https://www.statcan.gc.ca/en/public/beyond20-20) to be opened & converted to .CSV.
+After examination, they seem to have little use (stoping in 2013).
+
 [La morbidité hospitalière _définitions et méthodes _maj2022.pdf](https://data.drees.solidarites-sante.gouv.fr/api/datasets/1.0/500_morbidite-hospitaliere/attachments/la_morbidite_hospitaliere_definitions_et_methodes_maj2022_pdf/)
+
+
+### Morbidité hospitalière
+Data from [Data.Gouv.fr - Morbidité hospitalière](https://www.data.gouv.fr/datasets/morbidite-hospitaliere/)
+
+[ODIN Platform](https://odin-dataviz-drees.sante.gouv.fr/digdash_dashboard_dataviz_drees/?defaultPage=Morbidit%C3%A9_Hospitali%C3%A8re_Tableau_1_D%C3%A9partements&user=dataviz_sante&pass=dataviz_sante#17)
 
 
 ## Sweden
