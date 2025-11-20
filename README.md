@@ -50,10 +50,11 @@ Data from [drees.solidarites-sante.gouv.fr](https://drees.solidarites-sante.gouv
 [Anciennes régions.zip](https://data.drees.solidarites-sante.gouv.fr/api/datasets/1.0/500_morbidite-hospitaliere/attachments/anciennes_regions_zip/)
 
 **Note:** The "Anciennes régions.zip" data is provided on .IVT format, which requires the [Beyond 20/20 Professional Browser](https://www.statcan.gc.ca/en/public/beyond20-20) to be opened & converted to .CSV.
-After examination, they seem to have little use (stoping in 2013).
+After examination, they seem to have little use (stopping in 2013).
 
 [La morbidité hospitalière _définitions et méthodes _maj2022.pdf](https://data.drees.solidarites-sante.gouv.fr/api/datasets/1.0/500_morbidite-hospitaliere/attachments/la_morbidite_hospitaliere_definitions_et_methodes_maj2022_pdf/)
 
+**Note:** The data for 2013-2017 isn't available. Contacted DREES to know if it can be obtained.
 
 ### Morbidité hospitalière
 Data from [Data.Gouv.fr - Morbidité hospitalière](https://www.data.gouv.fr/datasets/morbidite-hospitaliere/)
