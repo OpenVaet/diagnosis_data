@@ -46,6 +46,7 @@ Data from [drees.solidarites-sante.gouv.fr](https://drees.solidarites-sante.gouv
 ### Morbidité hospitalière : mise à jour des données disponibles jusqu’en 2023
 [Morbidité_hospitalière-Données_format_csv.zip](https://data.drees.solidarites-sante.gouv.fr/api/datasets/1.0/500_morbidite-hospitaliere/attachments/morbidite_hospitaliere_donnees_format_csv_zip/)
 [Anciennes régions.zip](https://data.drees.solidarites-sante.gouv.fr/api/datasets/1.0/500_morbidite-hospitaliere/attachments/anciennes_regions_zip/)
+**Note:** The "Anciennes régions.zip" data is provided on .IVT format, which requires the [Beyond 20/20 Professional Browser](https://www.statcan.gc.ca/en/public/beyond20-20) to be opened & converted to .CSV.
 [La morbidité hospitalière _définitions et méthodes _maj2022.pdf](https://data.drees.solidarites-sante.gouv.fr/api/datasets/1.0/500_morbidite-hospitaliere/attachments/la_morbidite_hospitaliere_definitions_et_methodes_maj2022_pdf/)
 
 
@@ -57,7 +58,7 @@ Data from [socialstyrelsen.se](https://www.socialstyrelsen.se/en/statistics-and-
 
 ## Finland
 
-Data from [https://thl.fi/en/statistics-and-data/statistics-by-topic/database-reporting)
+Data from [thl.fi](https://thl.fi/en/statistics-and-data/statistics-by-topic/database-reporting)
 
 No sufficiently detailed granularity located.
 
