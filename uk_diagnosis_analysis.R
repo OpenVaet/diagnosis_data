@@ -1,6 +1,9 @@
 # Packages needed
 library(readxl)
 library(stringr)
+library(dplyr)
+library(tidyr)
+library(magrittr) 
 
 # Create output directory if it doesn't exist
 out_dir <- file.path("data", "diagnosis")
@@ -206,6 +209,7 @@ interval_to_midyear <- function(x) {
 # ---- 1. Load all CSVs into a single long table ----
 
 all_data_list <- list()
+diag_age_list <- list()  # NEW: to store age-group counts
 
 for (yr in available_years) {
   csv_path <- file.path(data_dir_csv, paste0(yr, ".csv"))
@@ -237,19 +241,145 @@ for (yr in available_years) {
   
   all_data_list[[yr]] <- df[, c("code", "description", "all_diagnoses",
                                 "year_interval", "year_mid")]
+  
+  # ---- NEW: capture age-group counts in long format ----
+  age_cols_target <- c(
+    "age_0","age_1_4","age_5_9","age_10_14",
+    "age_15","age_16","age_17","age_18","age_19",
+    "age_20_24","age_25_29","age_30_34","age_35_39",
+    "age_40_44","age_45_49","age_50_54","age_55_59",
+    "age_60_64","age_65_69","age_70_74","age_75_79",
+    "age_80_84","age_85_89","age_90plus"
+  )
+  
+  age_cols <- intersect(age_cols_target, colnames(df))
+  
+  if (length(age_cols) > 0) {
+    # ensure all age columns are numeric (some may have been read as character)
+    df[age_cols] <- lapply(df[age_cols], function(x) {
+      suppressWarnings(as.numeric(x))
+    })
+    
+    df_age <- df[, c("code", age_cols, "year_interval", "year_mid"), drop = FALSE]
+    
+    df_age_long <- df_age %>%
+      pivot_longer(
+        cols      = all_of(age_cols),
+        names_to  = "age_group",
+        values_to = "cases"
+      )
+    
+    diag_age_list[[yr]] <- df_age_long
+  } else {
+    warning("No age_* columns found in ", csv_path, " – no age breakdown captured for this year.")
+  }
 }
-
 
 all_data <- do.call(rbind, all_data_list)
 
 # Make sure year_interval is character
 all_data$year_interval <- as.character(all_data$year_interval)
 
+diag_age <- if (length(diag_age_list) > 0) {
+  bind_rows(diag_age_list) %>%
+    mutate(
+      year_interval = as.character(year_interval),
+      cases         = as.numeric(cases)
+    )
+} else {
+  NULL
+}
+
 # Total number of years we are considering
 n_years_total <- length(available_years)
 
 ### ---------------------------------------------------------------
-### 1. Report codes not present in all years
+### 1. Load population data and aggregate into diagnosis age groups
+### ---------------------------------------------------------------
+
+pop_path <- file.path("data", "population", "2015_2025.csv")
+if (!file.exists(pop_path)) {
+  stop("Population file not found: ", pop_path,
+       "\nMake sure you ran the population script first.")
+}
+
+pop_raw <- read.csv(pop_path, stringsAsFactors = FALSE, check.names = FALSE)
+
+# Sum Males + Females
+pop_total <- pop_raw %>%
+  group_by(year, age) %>%
+  summarise(
+    population = sum(as.numeric(population), na.rm = TRUE),
+    .groups    = "drop"
+  )
+
+age_to_group_vec <- function(age) {
+  a <- as.character(age)
+  res <- NA_character_
+  
+  is_num <- grepl("^[0-9]+$", a)
+  n      <- suppressWarnings(as.integer(a))
+  
+  # numeric ages
+  res[is_num & n == 0]                    <- "age_0"
+  res[is_num & n >= 1  & n <= 4]          <- "age_1_4"
+  res[is_num & n >= 5  & n <= 9]          <- "age_5_9"
+  res[is_num & n >= 10 & n <= 14]         <- "age_10_14"
+  res[is_num & n == 15]                   <- "age_15"
+  res[is_num & n == 16]                   <- "age_16"
+  res[is_num & n == 17]                   <- "age_17"
+  res[is_num & n == 18]                   <- "age_18"
+  res[is_num & n == 19]                   <- "age_19"
+  res[is_num & n >= 20 & n <= 24]         <- "age_20_24"
+  res[is_num & n >= 25 & n <= 29]         <- "age_25_29"
+  res[is_num & n >= 30 & n <= 34]         <- "age_30_34"
+  res[is_num & n >= 35 & n <= 39]         <- "age_35_39"
+  res[is_num & n >= 40 & n <= 44]         <- "age_40_44"
+  res[is_num & n >= 45 & n <= 49]         <- "age_45_49"
+  res[is_num & n >= 50 & n <= 54]         <- "age_50_54"
+  res[is_num & n >= 55 & n <= 59]         <- "age_55_59"
+  res[is_num & n >= 60 & n <= 64]         <- "age_60_64"
+  res[is_num & n >= 65 & n <= 69]         <- "age_65_69"
+  res[is_num & n >= 70 & n <= 74]         <- "age_70_74"
+  res[is_num & n >= 75 & n <= 79]         <- "age_75_79"
+  res[is_num & n >= 80 & n <= 84]         <- "age_80_84"
+  res[is_num & n >= 85 & n <= 89]         <- "age_85_89"
+  res[is_num & n >= 90]                   <- "age_90plus"
+  
+  # 90+ category in the population file
+  res[a == "90+"]                         <- "age_90plus"
+  
+  res
+}
+
+pop_agegroups <- pop_total %>%
+  mutate(age_group = age_to_group_vec(age)) %>%
+  filter(!is.na(age_group)) %>%
+  group_by(year, age_group) %>%
+  summarise(
+    population = sum(population, na.rm = TRUE),
+    .groups    = "drop"
+  )
+
+# Attach population and per-100k rates to diagnosis age-group data
+if (!is.null(diag_age)) {
+  diag_age <- diag_age %>%
+    left_join(
+      pop_agegroups,
+      by = c("year_mid" = "year", "age_group" = "age_group")
+    ) %>%
+    mutate(
+      rate_per_100k = ifelse(
+        !is.na(population) & population > 0,
+        cases / population * 1e5,
+        NA_real_
+      )
+    )
+}
+
+
+### ---------------------------------------------------------------
+### 2. Report codes not present in all years
 ### ---------------------------------------------------------------
 
 # Presence of each code in which year intervals
@@ -296,7 +426,7 @@ write.csv(report_not_all, file = not_all_path, row.names = FALSE)
 message("Full 'not in all years' report written to: ", not_all_path)
 
 ### ---------------------------------------------------------------
-### 2. Trend analysis for codes present in ALL years
+### 3. Trend analysis for codes present in ALL years
 ### ---------------------------------------------------------------
 
 codes_all_years <- names(code_years_unique)[
@@ -503,7 +633,7 @@ if (length(alerts_list) == 0) {
 
   
   # ---------------------------------------------------------------
-  # 2a. Filter out events with < 1000 diagnoses in that year
+  # 3a. Filter out events with < 1000 diagnoses in that year
   # ---------------------------------------------------------------
   min_events_threshold <- 1000
   alerts_report <- alerts_report[
@@ -699,13 +829,13 @@ if (length(alerts_list) == 0) {
     message("HTML trend report written to: ", html_path)
     
     # -------------------------------------------------------------
-    # 2b. Per-code detail pages with charts & full time-series
+    # 3b. Per-code detail pages with charts & full time-series
     # -------------------------------------------------------------
     
     codes_for_details <- unique(alerts_report$code)
     
     for (cd in codes_for_details) {
-      # All data for this code
+      # All data for this code (all ages)
       df_code <- all_data[all_data$code == cd, , drop = FALSE]
       df_code <- df_code[!is.na(df_code$all_diagnoses), , drop = FALSE]
       df_code <- df_code[order(df_code$year_mid), , drop = FALSE]
@@ -740,7 +870,7 @@ if (length(alerts_list) == 0) {
       df_code$is_alert <- df_code$all_diagnoses > df_code$pred_upr * anomaly_threshold &
                           df_code$year_mid %in% future_years
       
-      # ----------------- PLOT (PNG) -----------------
+      # ----------------- PLOT (all ages, existing) -----------------
       code_id   <- make_code_id(cd)
       png_file  <- file.path(out_dir_report, paste0("trend_", code_id, ".png"))
       
@@ -781,7 +911,111 @@ if (length(alerts_list) == 0) {
       
       dev.off()
       
-      # ----------------- DETAIL HTML -----------------
+      # ----------------- AGE-SPECIFIC BREAKDOWN (NEW) -----------------
+      age_section_html <- ""
+      
+      if (!is.null(diag_age)) {
+        df_code_age <- diag_age[diag_age$code == cd, , drop = FALSE]
+        
+        if (nrow(df_code_age) > 0) {
+          # Clean & order
+          df_code_age <- df_code_age %>%
+            arrange(age_group, year_mid)
+          
+          # Create one trend plot per age group: cases per 100k
+          age_groups <- unique(df_code_age$age_group)
+          age_plots_html <- c()
+          
+          for (ag in age_groups) {
+            df_ag <- df_code_age[df_code_age$age_group == ag, , drop = FALSE]
+            df_ag <- df_ag[!is.na(df_ag$rate_per_100k), , drop = FALSE]
+            if (nrow(df_ag) == 0) next
+            
+            ag_id  <- gsub("[^A-Za-z0-9]+", "_", ag)
+            png_ag <- file.path(out_dir_report,
+                                paste0("trend_", code_id, "_", ag_id, ".png"))
+            
+            y_min_ag <- min(df_ag$rate_per_100k, na.rm = TRUE)
+            y_max_ag <- max(df_ag$rate_per_100k, na.rm = TRUE)
+            
+            png(png_ag, width = 800, height = 600)
+            par(mar = c(5, 5, 5, 2))
+            
+            plot(
+              df_ag$year_mid, df_ag$rate_per_100k,
+              type = "b", pch = 16,
+              xlab = "Year (mid-point)",
+              ylab = "Cases per 100,000",
+              main = paste0(cd, " - ", substr(desc, 1, 60),
+                            " (", ag, ")"),
+              ylim = c(y_min_ag, y_max_ag)
+            )
+            
+            text(
+              df_ag$year_mid, df_ag$rate_per_100k,
+              labels = sprintf("%.1f", df_ag$rate_per_100k),
+              pos = 3, cex = 0.7
+            )
+            
+            dev.off()
+            
+            age_plots_html <- c(
+              age_plots_html,
+              sprintf(
+                "<h3>Age group %s</h3>
+                 <img src='%s' alt='Rate trend for %s (%s)' style='max-width:100%%;height:auto;border:1px solid #ccc;' />",
+                htmltools::htmlEscape(ag),
+                basename(png_ag),
+                htmltools::htmlEscape(cd),
+                htmltools::htmlEscape(ag)
+              )
+            )
+
+          }
+          
+          # Age-specific data table
+          df_age_table <- df_code_age %>%
+            arrange(age_group, year_mid) %>%
+            mutate(
+              rate_per_100k = round(rate_per_100k, 2)
+            )
+          
+          age_rows <- apply(df_age_table, 1, function(r) {
+            sprintf(
+              "<tr>
+                 <td>%s</td>
+                 <td>%s</td>
+                 <td>%s</td>
+                 <td>%s</td>
+                 <td>%0.2f</td>
+               </tr>\n",
+              r[["year_interval"]],
+              r[["age_group"]],
+              format(as.numeric(r[["cases"]]), big.mark = ",", scientific = FALSE),
+              format(as.numeric(r[["population"]]), big.mark = ",", scientific = FALSE),
+              as.numeric(r[["rate_per_100k"]])
+            )
+          })
+          
+          age_section_html <- paste0(
+            "<h2>Age-specific incidence (per 100,000)</h2>",
+            paste(age_plots_html, collapse = "\n"),
+            "<h3>Age-specific data</h3>",
+            "<table>",
+            "<tr>",
+            "<th>Year interval</th>",
+            "<th>Age group</th>",
+            "<th>Cases</th>",
+            "<th>Population</th>",
+            "<th>Rate per 100,000</th>",
+            "</tr>",
+            paste(age_rows, collapse = ""),
+            "</table>"
+          )
+        }
+      }
+      
+      # ----------------- DETAIL HTML (all ages + age breakdown) -----------------
       detail_file <- file.path(out_dir_report, paste0("code_", code_id, ".html"))
       
       df_table <- df_code[, c(
@@ -834,7 +1068,7 @@ if (length(alerts_list) == 0) {
         "<img src='", basename(png_file), 
         "' alt='Trend chart for ", htmltools::htmlEscape(cd), 
         "' style='max-width:100%;height:auto;border:1px solid #ccc;' />",
-        "<h2>Yearly data</h2>",
+        "<h2>Yearly data (all ages)</h2>",
         "<table>",
         "<tr>",
         "<th>Year interval</th>",
@@ -847,11 +1081,13 @@ if (length(alerts_list) == 0) {
         "</tr>",
         paste(table_rows, collapse = ""),
         "</table>",
+        age_section_html,
         "</body></html>"
       )
       
       cat(detail_html, file = detail_file)
       message("Detail HTML written for code ", cd, ": ", detail_file)
     }
+
   }
 }
