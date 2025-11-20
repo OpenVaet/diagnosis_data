@@ -30,3 +30,9 @@ Data from [production-like.nhsd.io](https://production-like.nhsd.io/data-and-inf
 [2016-2017](https://files.digital.nhs.uk/publication/7/g/hosp-epis-stat-admi-proc-2016-17-tab.xlsx)
 [2015-2016](https://files.digital.nhs.uk/publicationimport/pub22xxx/pub22378/hosp-epis-stat-admi-proc-2015-16-tab.xlsx)
 [2014-2015](https://files.digital.nhs.uk/publicationimport/pub19xxx/pub19124/hosp-epis-stat-admi-proc-2014-15-tab.xlsx)
+
+### Zipped population projections data files, UK
+[2022 based edition of this dataset](https://www.ons.gov.uk/file?uri=/peoplepopulationandcommunity/populationandmigration/populationprojections/datasets/z1zippedpopulationprojectionsdatafilesuk/2022based/uk.zip)
+
+### Estimates of the population for England and Wales
+[UK population estimates 1838 to 2023 edition of this dataset edition of this dataset](https://www.ons.gov.uk/file?uri=/peoplepopulationandcommunity/populationandmigration/populationestimates/datasets/estimatesofthepopulationforenglandandwales/ukpopulationestimates1838to2023editionofthisdataset/ukpopulationestimates18382023.xlsx)

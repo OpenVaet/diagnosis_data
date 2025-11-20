@@ -45,9 +45,13 @@ for (year_range in names(year_urls)) {
 }
 
 # Make sure output dir exists
-out_dir_csv  <- file.path("output", "diagnosis_csv")
-if (!dir.exists(out_dir_csv)) {
-  dir.create(out_dir_csv, recursive = TRUE, showWarnings = FALSE)
+data_dir_csv  <- file.path("data", "diagnosis_csv")
+if (!dir.exists(data_dir_csv)) {
+  dir.create(data_dir_csv, recursive = TRUE, showWarnings = FALSE)
+}
+out_dir_report  <- file.path("output", "diagnosis_report")
+if (!dir.exists(out_dir_report)) {
+  dir.create(out_dir_report, recursive = TRUE, showWarnings = FALSE)
 }
 
 # ---- helper: clean names for CSV ----
@@ -80,7 +84,7 @@ clean_code_values <- function(x) {
 # ---- helper: convert one workbook to CSV ----
 convert_diagnosis_file <- function(year_range) {
   xlsx_path <- file.path(out_dir, paste0(year_range, ".xlsx"))
-  csv_path  <- file.path(out_dir_csv,  paste0(year_range, ".csv"))
+  csv_path  <- file.path(data_dir_csv,  paste0(year_range, ".csv"))
   
   if (file.exists(csv_path)) {
     message("CSV already exists, skipping: ", csv_path)
@@ -182,18 +186,16 @@ for (yr in year_ranges) {
 }
 
 ### ===============================================================
-### ANALYSIS ON THE GENERATED CSV FILES
+### PRIMARY ANALYSIS ON THE GENERATED CSV FILES
 ### ===============================================================
-
-# We assume year_ranges and out_dir_csv are already defined above.
 
 # Only keep years for which CSV actually exists
 available_years <- year_ranges[
-  file.exists(file.path(out_dir_csv, paste0(year_ranges, ".csv")))
+  file.exists(file.path(data_dir_csv, paste0(year_ranges, ".csv")))
 ]
 
 if (length(available_years) == 0) {
-  stop("No diagnosis CSV files found in ", out_dir_csv)
+  stop("No diagnosis CSV files found in ", data_dir_csv)
 }
 
 # Helper: convert year interval "2014-2015" -> mid year 2015 (numeric)
@@ -206,7 +208,7 @@ interval_to_midyear <- function(x) {
 all_data_list <- list()
 
 for (yr in available_years) {
-  csv_path <- file.path(out_dir_csv, paste0(yr, ".csv"))
+  csv_path <- file.path(data_dir_csv, paste0(yr, ".csv"))
   message("Loading ", csv_path)
   
   df <- read.csv(csv_path, stringsAsFactors = FALSE, check.names = FALSE)
@@ -289,7 +291,7 @@ message("Number of codes NOT present in all years: ",
 print(utils::head(report_not_all, 50))
 
 # Save full report to CSV
-not_all_path <- file.path(out_dir_csv, "codes_not_in_all_years.csv")
+not_all_path <- file.path(data_dir_csv, "codes_not_in_all_years.csv")
 write.csv(report_not_all, file = not_all_path, row.names = FALSE)
 message("Full 'not in all years' report written to: ", not_all_path)
 
@@ -541,12 +543,12 @@ if (length(alerts_list) == 0) {
     )]
     
     # Save filtered alerts as CSV (with pattern_type included)
-    alerts_csv_path <- file.path(out_dir_csv, "diagnosis_trend_alerts.csv")
+    alerts_csv_path <- file.path(out_dir_report, "diagnosis_trend_alerts.csv")
     write.csv(alerts_report, file = alerts_csv_path, row.names = FALSE)
     message("Trend alerts CSV written to: ", alerts_csv_path)
     
     ### ---- Build main HTML report ----
-    html_path <- file.path(out_dir_csv, "diagnosis_trend_report.html")
+    html_path <- file.path(out_dir_report, "diagnosis_trend_report.html")
     
     html_header <- paste0(
       "<!DOCTYPE html>\n",
@@ -740,7 +742,7 @@ if (length(alerts_list) == 0) {
       
       # ----------------- PLOT (PNG) -----------------
       code_id   <- make_code_id(cd)
-      png_file  <- file.path(out_dir_csv, paste0("trend_", code_id, ".png"))
+      png_file  <- file.path(out_dir_report, paste0("trend_", code_id, ".png"))
       
       y_min <- min(c(df_code$all_diagnoses, df_code$pred_lwr), na.rm = TRUE)
       y_max <- max(c(df_code$all_diagnoses, df_code$pred_upr), na.rm = TRUE)
@@ -780,7 +782,7 @@ if (length(alerts_list) == 0) {
       dev.off()
       
       # ----------------- DETAIL HTML -----------------
-      detail_file <- file.path(out_dir_csv, paste0("code_", code_id, ".html"))
+      detail_file <- file.path(out_dir_report, paste0("code_", code_id, ".html"))
       
       df_table <- df_code[, c(
         "year_interval", "year_mid",
