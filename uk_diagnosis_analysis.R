@@ -970,16 +970,47 @@ if (length(alerts_list) == 0) {
             df_ag <- df_ag[!is.na(df_ag$rate_per_100k), , drop = FALSE]
             if (nrow(df_ag) == 0) next
             
+            # Ensure ordered by year
+            df_ag <- df_ag[order(df_ag$year_mid), , drop = FALSE]
+            
+            # ---- Fit age-specific trend over baseline years (2015–2019) ----
+            df_base_ag <- df_ag[df_ag$year_mid %in% baseline_years &
+                                  !is.na(df_ag$rate_per_100k), , drop = FALSE]
+            
+            if (nrow(df_base_ag) >= 2) {
+              fit_ag <- lm(rate_per_100k ~ year_mid, data = df_base_ag)
+              
+              pred_all_ag <- predict(
+                fit_ag,
+                newdata  = data.frame(year_mid = df_ag$year_mid),
+                interval = "prediction",
+                level    = 0.95
+              )
+              
+              df_ag$pred_rate <- pred_all_ag[, "fit"]
+              df_ag$pred_lwr  <- pred_all_ag[, "lwr"]
+              df_ag$pred_upr  <- pred_all_ag[, "upr"]
+              
+              y_min_ag <- min(df_ag$rate_per_100k, df_ag$pred_lwr, na.rm = TRUE)
+              y_max_ag <- max(df_ag$rate_per_100k, df_ag$pred_upr, na.rm = TRUE)
+            } else {
+              # Not enough points to fit an age-specific trend
+              df_ag$pred_rate <- NA_real_
+              df_ag$pred_lwr  <- NA_real_
+              df_ag$pred_upr  <- NA_real_
+              
+              y_min_ag <- min(df_ag$rate_per_100k, na.rm = TRUE)
+              y_max_ag <- max(df_ag$rate_per_100k, na.rm = TRUE)
+            }
+            
             ag_id  <- gsub("[^A-Za-z0-9]+", "_", ag)
             png_ag <- file.path(out_dir_report,
                                 paste0("trend_", code_id, "_", ag_id, ".png"))
             
-            y_min_ag <- min(df_ag$rate_per_100k, na.rm = TRUE)
-            y_max_ag <- max(df_ag$rate_per_100k, na.rm = TRUE)
-            
             png(png_ag, width = 800, height = 600)
             par(mar = c(5, 5, 5, 2))
             
+            # Observed rates
             plot(
               df_ag$year_mid, df_ag$rate_per_100k,
               type = "b", pch = 16,
@@ -990,6 +1021,22 @@ if (length(alerts_list) == 0) {
               ylim = c(y_min_ag, y_max_ag)
             )
             
+            # Age-specific predicted trend + 95% prediction interval, if available
+            if (any(!is.na(df_ag$pred_rate))) {
+              lines(df_ag$year_mid, df_ag$pred_rate, lty = 2)
+              lines(df_ag$year_mid, df_ag$pred_lwr,  lty = 3)
+              lines(df_ag$year_mid, df_ag$pred_upr,  lty = 3)
+              
+              legend(
+                "topleft",
+                legend = c("Observed rate", "Predicted rate", "95% PI"),
+                lty    = c(1, 2, 3),
+                pch    = c(16, NA, NA),
+                bty    = "n"
+              )
+            }
+            
+            # Labels on observed points
             text(
               df_ag$year_mid, df_ag$rate_per_100k,
               labels = sprintf("%.1f", df_ag$rate_per_100k),
@@ -1009,7 +1056,6 @@ if (length(alerts_list) == 0) {
                 htmltools::htmlEscape(ag)
               )
             )
-
           }
           
           # Age-specific data table

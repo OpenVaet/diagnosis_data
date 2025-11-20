@@ -38,3 +38,26 @@ Data from [production-like.nhsd.io](https://production-like.nhsd.io/data-and-inf
 
 ### Estimates of the population for England and Wales
 [UK population estimates 1838 to 2023 edition of this dataset edition of this dataset](https://www.ons.gov.uk/file?uri=/peoplepopulationandcommunity/populationandmigration/populationestimates/datasets/estimatesofthepopulationforenglandandwales/ukpopulationestimates1838to2023editionofthisdataset/ukpopulationestimates18382023.xlsx)
+
+## France
+
+Data from [drees.solidarites-sante.gouv.fr](https://drees.solidarites-sante.gouv.fr/communique-de-presse-jeux-de-donnees/jeux-de-donnees/250305_DATA_morbidite-hospitaliere)
+
+### Morbidité hospitalière : mise à jour des données disponibles jusqu’en 2023
+[Morbidité_hospitalière-Données_format_csv.zip](https://data.drees.solidarites-sante.gouv.fr/api/datasets/1.0/500_morbidite-hospitaliere/attachments/morbidite_hospitaliere_donnees_format_csv_zip/)
+[Anciennes régions.zip](https://data.drees.solidarites-sante.gouv.fr/api/datasets/1.0/500_morbidite-hospitaliere/attachments/anciennes_regions_zip/)
+[La morbidité hospitalière _définitions et méthodes _maj2022.pdf](https://data.drees.solidarites-sante.gouv.fr/api/datasets/1.0/500_morbidite-hospitaliere/attachments/la_morbidite_hospitaliere_definitions_et_methodes_maj2022_pdf/)
+
+
+## Sweden
+
+Data from [socialstyrelsen.se](https://www.socialstyrelsen.se/en/statistics-and-data/statistics/statistical-databases/)
+
+[Statistical Database, Diagnoses](https://sdb.socialstyrelsen.se/if_par/val_eng.aspx)
+
+## Finland
+
+Data from [https://thl.fi/en/statistics-and-data/statistics-by-topic/database-reporting)
+
+No sufficiently detailed granularity located.
+
