@@ -313,6 +313,7 @@ pop_total <- pop_raw %>%
     .groups    = "drop"
   )
 
+# Map single-year ages -> grouped bands (with 15–19 collapsed)
 age_to_group_vec <- function(age) {
   a <- as.character(age)
   res <- NA_character_
@@ -325,11 +326,7 @@ age_to_group_vec <- function(age) {
   res[is_num & n >= 1  & n <= 4]          <- "age_1_4"
   res[is_num & n >= 5  & n <= 9]          <- "age_5_9"
   res[is_num & n >= 10 & n <= 14]         <- "age_10_14"
-  res[is_num & n == 15]                   <- "age_15"
-  res[is_num & n == 16]                   <- "age_16"
-  res[is_num & n == 17]                   <- "age_17"
-  res[is_num & n == 18]                   <- "age_18"
-  res[is_num & n == 19]                   <- "age_19"
+  res[is_num & n >= 15 & n <= 19]         <- "age_15_19"
   res[is_num & n >= 20 & n <= 24]         <- "age_20_24"
   res[is_num & n >= 25 & n <= 29]         <- "age_25_29"
   res[is_num & n >= 30 & n <= 34]         <- "age_30_34"
@@ -352,6 +349,7 @@ age_to_group_vec <- function(age) {
   res
 }
 
+# Population aggregated into the same age bands as diagnoses
 pop_agegroups <- pop_total %>%
   mutate(age_group = age_to_group_vec(age)) %>%
   filter(!is.na(age_group)) %>%
@@ -361,9 +359,21 @@ pop_agegroups <- pop_total %>%
     .groups    = "drop"
   )
 
-# Attach population and per-100k rates to diagnosis age-group data
+# Collapse diagnosis age 15–19 → age_15_19, then attach population & rates
 if (!is.null(diag_age)) {
   diag_age <- diag_age %>%
+    mutate(
+      age_group = ifelse(
+        age_group %in% c("age_15", "age_16", "age_17", "age_18", "age_19"),
+        "age_15_19",
+        age_group
+      )
+    ) %>%
+    group_by(code, year_interval, year_mid, age_group) %>%
+    summarise(
+      cases = sum(cases, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
     left_join(
       pop_agegroups,
       by = c("year_mid" = "year", "age_group" = "age_group")
@@ -377,6 +387,28 @@ if (!is.null(diag_age)) {
     )
 }
 
+age_group_order <- c(
+  "age_0",
+  "age_1_4",
+  "age_5_9",
+  "age_10_14",
+  "age_15_19",
+  "age_20_24",
+  "age_25_29",
+  "age_30_34",
+  "age_35_39",
+  "age_40_44",
+  "age_45_49",
+  "age_50_54",
+  "age_55_59",
+  "age_60_64",
+  "age_65_69",
+  "age_70_74",
+  "age_75_79",
+  "age_80_84",
+  "age_85_89",
+  "age_90plus"
+)
 
 ### ---------------------------------------------------------------
 ### 2. Report codes not present in all years
@@ -920,10 +952,17 @@ if (length(alerts_list) == 0) {
         if (nrow(df_code_age) > 0) {
           # Clean & order
           df_code_age <- df_code_age %>%
+            mutate(
+              age_group = factor(age_group, levels = age_group_order)
+            ) %>%
             arrange(age_group, year_mid)
-          
+
           # Create one trend plot per age group: cases per 100k
           age_groups <- unique(df_code_age$age_group)
+
+          # ensure canonical order and drop unused
+          age_groups <- intersect(age_group_order, as.character(age_groups))
+
           age_plots_html <- c()
           
           for (ag in age_groups) {
@@ -975,10 +1014,14 @@ if (length(alerts_list) == 0) {
           
           # Age-specific data table
           df_age_table <- df_code_age %>%
+            mutate(
+              age_group = factor(age_group, levels = age_group_order)
+            ) %>%
             arrange(age_group, year_mid) %>%
             mutate(
               rate_per_100k = round(rate_per_100k, 2)
             )
+
           
           age_rows <- apply(df_age_table, 1, function(r) {
             sprintf(
