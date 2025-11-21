@@ -6,7 +6,7 @@ library(tidyr)
 library(magrittr) 
 
 # Create output directory if it doesn't exist
-out_dir <- file.path("data", "diagnosis")
+out_dir <- file.path("data", "uk", "diagnosis")
 if (!dir.exists(out_dir)) {
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 }
@@ -48,11 +48,11 @@ for (year_range in names(year_urls)) {
 }
 
 # Make sure output dir exists
-data_dir_csv  <- file.path("data", "diagnosis_csv")
+data_dir_csv  <- file.path("data", "uk", "diagnosis_csv")
 if (!dir.exists(data_dir_csv)) {
   dir.create(data_dir_csv, recursive = TRUE, showWarnings = FALSE)
 }
-out_dir_report  <- file.path("output", "diagnosis_report")
+out_dir_report  <- file.path("output", "uk", "diagnosis_report")
 if (!dir.exists(out_dir_report)) {
   dir.create(out_dir_report, recursive = TRUE, showWarnings = FALSE)
 }
@@ -297,7 +297,7 @@ n_years_total <- length(available_years)
 ### 1. Load population data and aggregate into diagnosis age groups
 ### ---------------------------------------------------------------
 
-pop_path <- file.path("data", "population", "2015_2025.csv")
+pop_path <- file.path("data", "uk", "population", "2015_2025.csv")
 if (!file.exists(pop_path)) {
   stop("Population file not found: ", pop_path,
        "\nMake sure you ran the population script first.")

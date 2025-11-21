@@ -74,7 +74,7 @@ After examination, they seem to have little use (stopping in 2013).
 
 [La morbidité hospitalière _définitions et méthodes _maj2022.pdf](https://data.drees.solidarites-sante.gouv.fr/api/datasets/1.0/500_morbidite-hospitaliere/attachments/la_morbidite_hospitaliere_definitions_et_methodes_maj2022_pdf/)
 
-**Note:** The data for 2013-2017 isn't available. Contacted DREES to know if it can be obtained.
+**Note:** The data for 2014-2017 isn't available. Contacted DREES to know if it can be obtained.
 
 ### Morbidité hospitalière
 Data from [Data.Gouv.fr - Morbidité hospitalière](https://www.data.gouv.fr/datasets/morbidite-hospitaliere/)
@@ -87,6 +87,11 @@ Data from [Data.Gouv.fr - Morbidité hospitalière](https://www.data.gouv.fr/dat
 Data from [socialstyrelsen.se](https://www.socialstyrelsen.se/en/statistics-and-data/statistics/statistical-databases/)
 
 [Statistical Database, Diagnoses](https://sdb.socialstyrelsen.se/if_par/val_eng.aspx)
+
+To download the Swedish data, you'll need the Selenium [chromedriver.exe](https://googlechromelabs.github.io/chrome-for-testing/) corresponding to your Google Chrome version.
+
+Then run
+`get_swedish_data.pl`
 
 ## Finland
 
