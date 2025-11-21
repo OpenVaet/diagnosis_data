@@ -84,8 +84,6 @@ collect_diagnosis();
 ### 9. Process diagnoses in batches of 100 (select 100 codes at a time)
 my $last_completed_batch = load_state();
 process_diagnoses($last_completed_batch);
-### 10. Print data.
-print_data();
 
 $driver->shutdown_binary();
 

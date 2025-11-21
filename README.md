@@ -86,6 +86,7 @@ Data from [Data.Gouv.fr - Morbidité hospitalière](https://www.data.gouv.fr/dat
 #### Scansante.fr
 [Activités MCO](https://activite-mco.scansante.fr/activite-mco/)
 
+**Note:** Upon access only.
 
 ## Sweden
 
