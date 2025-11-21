@@ -239,7 +239,7 @@ sub process_diagnoses {
                 $cpt++;
                 if ($cpt == 10) {
                     STDOUT->printflush(
-                        "\rBatch $batch_no: selected $clicked diagnoses (currently [$diagnoses[$i]{code}] $label)"
+                        "\rBatch $batch_no: selected $clicked diagnoses (currently [$diagnoses[$i]{code}] $label)\t\t\t"
                     );
                     $cpt = 0;
                 }
@@ -541,7 +541,7 @@ sub save_state {
 
     my %state = (
         last_completed_batch => $batch_no,
-        saved_at             => scalar localtime(),
+        saved_at => localtime->strftime('%Y-%m-%d %H:%M:%S')
     );
 
     open my $fh, '>', $state_file
