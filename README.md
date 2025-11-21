@@ -1,11 +1,12 @@
 # Diagnosis Data
-Analytics on diagnosis codes
+Analytics on hospital diagnosis codes
 
-## UK Diagnosis & Interventions
+## UK
+### Diagnosis & Interventions
 
 Data from [production-like.nhsd.io](https://production-like.nhsd.io/data-and-information/publications/statistical/hospital-admitted-patient-care-activity)
 
-### Hospital Admitted Patient Care Activity: Diagnosis
+#### Hospital Admitted Patient Care Activity: Diagnosis
 [2024-2025](https://files.digital.nhs.uk/CC/EA025D/hosp-epis-stat-admi-diag-2024-25-tab.xlsx)
 
 [2023-2024](https://files.digital.nhs.uk/A5/5B8474/hosp-epis-stat-admi-diag-2023-24-tab.xlsx)
@@ -28,7 +29,7 @@ Data from [production-like.nhsd.io](https://production-like.nhsd.io/data-and-inf
 
 [2014-2015](https://files.digital.nhs.uk/publicationimport/pub19xxx/pub19124/hosp-epis-stat-admi-diag-2014-15-tab.xlsx)
 
-### Hospital Admitted Patient Care Activity: Procedures and Interventions 
+#### Hospital Admitted Patient Care Activity: Procedures and Interventions 
 [2024-2025](https://files.digital.nhs.uk/6D/C40538/hosp-epis-stat-admi-proc-2024-25-tab.xlsx)
 
 [2023-2024](https://files.digital.nhs.uk/92/DB66C9/hosp-epis-stat-admi-proc-2023-24-tab-v2.xlsx)
@@ -51,17 +52,18 @@ Data from [production-like.nhsd.io](https://production-like.nhsd.io/data-and-inf
 
 [2014-2015](https://files.digital.nhs.uk/publicationimport/pub19xxx/pub19124/hosp-epis-stat-admi-proc-2014-15-tab.xlsx)
 
-## UK Population Data
+### UK Population Data
 
-### Zipped population projections data files, UK
+#### Zipped population projections data files, UK
 [2022 based edition of this dataset](https://www.ons.gov.uk/file?uri=/peoplepopulationandcommunity/populationandmigration/populationprojections/datasets/z1zippedpopulationprojectionsdatafilesuk/2022based/uk.zip)
 
-### Estimates of the population for England and Wales
+#### Estimates of the population for England and Wales
 [UK population estimates 1838 to 2023 edition of this dataset edition of this dataset](https://www.ons.gov.uk/file?uri=/peoplepopulationandcommunity/populationandmigration/populationestimates/datasets/estimatesofthepopulationforenglandandwales/ukpopulationestimates1838to2023editionofthisdataset/ukpopulationestimates18382023.xlsx)
 
 ## France
 
-### Morbidité hospitalière : mise à jour des données disponibles jusqu’en 2023
+### Diagnosis
+#### Morbidité hospitalière : mise à jour des données disponibles jusqu’en 2023
 
 Data from [drees.solidarites-sante.gouv.fr](https://drees.solidarites-sante.gouv.fr/communique-de-presse-jeux-de-donnees/jeux-de-donnees/250305_DATA_morbidite-hospitaliere)
 
