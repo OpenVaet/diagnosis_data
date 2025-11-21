@@ -14,12 +14,19 @@ use JSON;
 use Data::Printer;
 use Math::Round qw(nearest);
 use File::Path qw(make_path);
+use Text::CSV;
 use Selenium::Chrome;
 use FindBin;
 use lib "$FindBin::Bin/../lib";
 
 my $cookie       = HTTP::Cookies->new();
 my $driver       = Selenium::Chrome->new();
+my $csv          = Text::CSV->new({
+    binary       => 1,
+    eol          => "\n",
+    always_quote => 1,
+}) or die "Cannot use Text::CSV: " . Text::CSV->error_diag();
+
 
 # Small implicit wait to let elements appear
 $driver->set_implicit_wait_timeout(10_000);
@@ -469,38 +476,50 @@ sub print_data_for_batch {
 
     my $file_exists = -e $output_file ? 1 : 0;
 
-    open my $out, '>>', $output_file
+    open my $out, '>>:encoding(UTF-8)', $output_file
         or die "Can't open $output_file for appending: $!";
 
     # Write header only once (when file is first created)
     if (!$file_exists) {
-        say $out "batch_no,age_group_code,age_group,summary,measure,diagnos,year,value";
+        $csv->print($out, [
+            'batch_no',
+            'age_group_code',
+            'age_group',
+            'summary',
+            'measure',
+            'diagnos',
+            'year',
+            'value',
+        ]);
     }
 
     for my $age_group_code (sort { $a <=> $b } keys %diag_data) {
-        my $age_group = $diag_data{$age_group_code}{'age_group'} // die;
-        my $summary   = $diag_data{$age_group_code}{'summary'}   // die;
+        my $age_group = sanitize_text($diag_data{$age_group_code}{'age_group'} // die);
+        my $summary   = sanitize_text($diag_data{$age_group_code}{'summary'}   // die);
 
         for my $measure (sort keys %{ $diag_data{$age_group_code}{'measures'} }) {
+            my $measure_clean = sanitize_text($measure);
+
             for my $diagnos (sort keys %{ $diag_data{$age_group_code}{'measures'}{$measure} }) {
+                my $diagnos_clean = sanitize_text($diagnos);
+
                 for my $year (
                     sort { $a <=> $b }
                     keys %{ $diag_data{$age_group_code}{'measures'}{$measure}{$diagnos} }
-                  )
-                {
+                ) {
                     my $value = $diag_data{$age_group_code}{'measures'}{$measure}{$diagnos}{$year} // die;
-                    $value =~ s/,//g;
-                    say $out join(
-                        ',',
+                    my $value_clean = sanitize_value($value);
+
+                    $csv->print($out, [
                         $batch_no,
                         $age_group_code,
                         $age_group,
                         $summary,
-                        $measure,
-                        $diagnos,
+                        $measure_clean,
+                        $diagnos_clean,
                         $year,
-                        $value,
-                    );
+                        $value_clean,
+                    ]);
                 }
             }
         }
@@ -511,6 +530,23 @@ sub print_data_for_batch {
 
     # free memory (optional but nice)
     %diag_data = ();
+}
+
+sub sanitize_text {
+    my ($s) = @_;
+    return '' unless defined $s;
+    $s =~ s/\s+/ /g;           # collapse all whitespace/newlines to single spaces
+    $s =~ s/^\s+//;
+    $s =~ s/\s+$//;
+    return $s;
+}
+
+sub sanitize_value {
+    my ($v) = @_;
+    return '' unless defined $v;
+    $v =~ s/\s+//g;            # remove spaces/thin spaces in numbers
+    $v =~ s/[, ]//g;           # if there are thousands separators like "1,234"
+    return $v;
 }
 
 sub load_state {
