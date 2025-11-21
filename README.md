@@ -92,7 +92,7 @@ Data from [socialstyrelsen.se](https://www.socialstyrelsen.se/en/statistics-and-
 
 To download the Swedish data, you'll need the Selenium [chromedriver.exe](https://googlechromelabs.github.io/chrome-for-testing/) corresponding to your Google Chrome version placed in the project folder.
 
-Then run
+Then run:
 
 1. `perl get_swedish_data.pl`
 
