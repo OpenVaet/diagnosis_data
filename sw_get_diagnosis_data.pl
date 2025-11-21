@@ -244,7 +244,7 @@ sub process_diagnoses {
                 $cpt++;
                 if ($cpt == 10) {
                     STDOUT->printflush(
-                        "\rBatch $batch_no: selected $clicked diagnoses (currently [$diagnoses[$i]{code}] $label)\t\t\t"
+                        "\rBatch $batch_no: selected $clicked diagnoses (currently [$diagnoses[$i]{code}] $label)                                                            "
                     );
                     $cpt = 0;
                 }
