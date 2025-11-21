@@ -7,13 +7,13 @@ library(stringr)
 # ----------------------------------------------------------------------
 # 1. Download the projections zip into data/zip
 # ----------------------------------------------------------------------
-zip_dir  <- file.path("data", "zip")
-proj_dir <- file.path("data", "population_projections")
-out_dir  <- file.path("data", "population")
+zip_dir  <- file.path("data", "uk", "zip")
+proj_dir <- file.path("data", "uk", "population_projections")
+pop_dir  <- file.path("data", "uk", "population")
 
 if (!dir.exists(zip_dir))  dir.create(zip_dir, recursive = TRUE, showWarnings = FALSE)
 if (!dir.exists(proj_dir)) dir.create(proj_dir, recursive = TRUE, showWarnings = FALSE)
-if (!dir.exists(out_dir))  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+if (!dir.exists(pop_dir))  dir.create(pop_dir, recursive = TRUE, showWarnings = FALSE)
 
 zip_url  <- "https://www.ons.gov.uk/file?uri=/peoplepopulationandcommunity/populationandmigration/populationprojections/datasets/z1zippedpopulationprojectionsdatafilesuk/2022based/uk.zip"
 zip_path <- file.path(zip_dir, "uk.zip")
@@ -69,7 +69,7 @@ pop_long <- pop %>%
   select(year, sex, age, population) %>%
   arrange(year, sex, age)
 
-out_csv <- file.path(out_dir, "2023_2025.csv")
+out_csv <- file.path(pop_dir, "2023_2025.csv")
 write.csv(pop_long, out_csv, row.names = FALSE)
 
 message("Written population data for 2023–2025 to: ", out_csv)
@@ -77,9 +77,6 @@ message("Written population data for 2023–2025 to: ", out_csv)
 # ----------------------------------------------------------------------
 # 4. Download the observed data file into data/zip
 # ----------------------------------------------------------------------
-zip_dir  <- file.path("data", "zip")
-pop_dir  <- file.path("data", "population")
-
 if (!dir.exists(zip_dir)) dir.create(zip_dir, recursive = TRUE)
 if (!dir.exists(pop_dir)) dir.create(pop_dir, recursive = TRUE)
 
@@ -168,9 +165,6 @@ message("Written: ", out_csv)
 #    - drop "All Ages"
 #    - collapse all ages >= 90 (and range bands) into "90+"
 # ----------------------------------------------------------------------
-
-pop_dir <- file.path("data", "population")
-
 pop_2015_2022 <- read.csv(
   file.path(pop_dir, "2015_2022.csv"),
   stringsAsFactors = FALSE,
