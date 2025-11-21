@@ -88,10 +88,10 @@ Data from [socialstyrelsen.se](https://www.socialstyrelsen.se/en/statistics-and-
 
 [Statistical Database, Diagnoses](https://sdb.socialstyrelsen.se/if_par/val_eng.aspx)
 
-To download the Swedish data, you'll need the Selenium [chromedriver.exe](https://googlechromelabs.github.io/chrome-for-testing/) corresponding to your Google Chrome version.
+To download the Swedish data, you'll need the Selenium [chromedriver.exe](https://googlechromelabs.github.io/chrome-for-testing/) corresponding to your Google Chrome version placed in the project folder.
 
 Then run
-`get_swedish_data.pl`
+`perl get_swedish_data.pl`
 
 ## Finland
 

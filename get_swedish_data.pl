@@ -78,6 +78,7 @@ while ($parsing_success == 0) {
 
     # Repeatedly click all expanders (p2.svg) inside the SVOV list
     # until there are no more left.
+    my ($cpt, $clicked) = (0, 0);
     while (1) {
         # Click the *link* that wraps the img[src="/images/p2.svg"]
         my @expand_links = $driver->find_elements(
@@ -90,6 +91,12 @@ while ($parsing_success == 0) {
         my $clicked = 0;
 
         for my $link (@expand_links) {
+            $cpt++;
+            $clicked++;
+            if ($cpt == 10) {
+                STDOUT->printflush("\r\tClicked [$clicked] expands");
+                $cpt = 0;
+            }
             eval {
                 # Scroll link into view before clicking (important in a long tree)
                 $driver->execute_script('arguments[0].scrollIntoView(true);', $link);
@@ -109,6 +116,8 @@ while ($parsing_success == 0) {
         # Safety: if we didn’t manage to click anything, stop to avoid infinite loop
         last if $clicked == 0;
     }
+    STDOUT->printflush("\r\tClicked [$clicked] expands");
+    say "";
 }
 
 ### 4. Check all leaf-diagnosis checkboxes (children only)
@@ -120,9 +129,16 @@ while ($parsing_success == 0) {
         'xpath'
     );
 
-    say "Found " . scalar(@leaf_boxes) . " leaf diagnosis checkboxes.";
-
+    my $total = scalar(@leaf_boxes);
+    say "Found $total leaf diagnosis checkboxes.";
+    my ($cpt, $clicked) = (0, 0);
     for my $cb (@leaf_boxes) {
+        $cpt++;
+        $clicked++;
+        if ($cpt == 10) {
+            STDOUT->printflush("\r\tClicked [$clicked / $total] checkboxes");
+            $cpt = 0;
+        }
         eval {
             # Scroll checkbox into view
             $driver->execute_script('arguments[0].scrollIntoView(true);', $cb);
@@ -136,7 +152,11 @@ while ($parsing_success == 0) {
             warn "Failed to click leaf diagnosis checkbox: $@";
         }
     }
+    STDOUT->printflush("\r\tClicked [$clicked / $total] checkboxes");
+    say "";
 }
+
+sleep 120;
 
 
 my $tree           = HTML::Tree->new();
@@ -144,7 +164,5 @@ $tree->parse($content);
 open my $out, '>', 'tmp.html';
 print $out $tree->as_HTML("<>&", "\t");
 close $out;
-
-sleep 10;
 
 $driver->shutdown_binary();
