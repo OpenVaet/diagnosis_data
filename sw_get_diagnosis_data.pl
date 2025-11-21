@@ -13,6 +13,7 @@ use Time::Piece;
 use JSON;
 use Data::Printer;
 use Math::Round qw(nearest);
+use File::Path qw(make_path);
 use Selenium::Chrome;
 use FindBin;
 use lib "$FindBin::Bin/../lib";
@@ -30,10 +31,12 @@ my @diagnoses    = ();
 # Will hold the data parsed.
 my %diag_data    = ();
 
-my $output_file  = "data/sw/diagnosis_csv/diagnosis_2008_2024.csv";
-my $state_file   = "data/sw/diagnosis_csv/diagnosis_2008_2024.state.json";
-
-my $json         = JSON->new->utf8->canonical(1);
+my $out_dir      = "data/sw/diagnosis_csv";
+my $output_file  = "$out_dir/diagnosis_2008_2024.csv";
+my $state_file   = "$out_dir/diagnosis_2008_2024.state.json";
+unless (-d $out_dir) {
+    make_path($out_dir) or die $!;
+}
 
 # Age groups targeted.
 my %age_groups   = ();
@@ -407,7 +410,7 @@ sub click_view_all {
 
 sub unselect_all_diagnoses {
     my $unselect_all_diags_button = $driver->find_element(
-        q{//a[@id="ph1_val_dia_ar_sv_hlDel"]},
+        q{//a[@id="ph1_val_dia_ar_svov_hlDel"]},
         'xpath'
     );
 
@@ -522,7 +525,7 @@ sub load_state {
     my $json_text = <$fh>;
     close $fh;
 
-    my $data = eval { $json->decode($json_text) };
+    my $data = eval { decode_json($json_text) };
     if ($@ or ref $data ne 'HASH') {
         warn "State file $state_file is invalid, starting from batch 0.";
         return 0;
@@ -543,7 +546,7 @@ sub save_state {
 
     open my $fh, '>', $state_file
         or die "Can't open $state_file for writing: $!";
-    print $fh $json->encode(\%state);
+    print $fh encode_json(\%state);
     close $fh;
 
     say "Saved state: last_completed_batch = $batch_no";
