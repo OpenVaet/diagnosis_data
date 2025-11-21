@@ -22,10 +22,16 @@ if (!file.exists(sw_data_path)) {
 
 sw_raw <- read.csv(sw_data_path, stringsAsFactors = FALSE, check.names = FALSE)
 
+# Trim whitespace from measure column to avoid issues
+sw_raw$measure <- trimws(sw_raw$measure)
+
 # Check structure
 message("Data columns: ", paste(names(sw_raw), collapse = ", "))
-message("Unique measures: ", paste(unique(sw_raw$measure), collapse = ", "))
-message("Unique ages: ", paste(unique(sw_raw$age_group), collapse = ", "))
+unique_measures <- unique(sw_raw$measure)
+message("Number of unique measures: ", length(unique_measures))
+for (i in seq_along(unique_measures)) {
+  message("  Measure ", i, ": \"", unique_measures[i], "\"")
+}
 
 # ---- Clean and prepare data ----
 
@@ -60,7 +66,15 @@ all_data_total <- all_data %>%
     .groups = "drop"
   )
 
+message("Total records for trend analysis: ", nrow(all_data_total))
+message("Unique diagnosis codes: ", length(unique(all_data_total$code)))
+
 # ---- Prepare age-specific data with rates per 100k ----
+# Note: Using crude rates (not age-standardised) for age-specific breakdown
+# The measure "Number of patients per 100,000 inhabitants" provides crude rates by age group
+# There's also "Number of patients per 100,000 inhabitants, age-standardised numbers 2024" 
+# but that's for overall age-standardised rates, not age-specific rates
+
 diag_age <- sw_raw %>%
   filter(measure == "Number of patients per 100,000 inhabitants") %>%
   mutate(
@@ -90,9 +104,38 @@ diag_age_cases <- sw_raw %>%
 diag_age <- diag_age %>%
   left_join(diag_age_cases, by = c("code", "age_group", "year_mid"))
 
-# Get unique age groups in order
-age_group_order <- unique(sw_raw$age_group)
-message("Swedish age groups: ", paste(age_group_order, collapse = ", "))
+message("Age-specific records with rates: ", nrow(diag_age))
+
+# Get unique age groups and define explicit order (youngest to oldest)
+age_group_order <- c(
+  "0-4 years",
+  "5-9 years", 
+  "10-14 years",
+  "15-19 years",
+  "20-24 years",
+  "25-29 years",
+  "30-34 years",
+  "35-39 years",
+  "40-44 years",
+  "45-49 years",
+  "50-54 years",
+  "55-59 years",
+  "60-64 years",
+  "65-69 years",
+  "70-74 years",
+  "75-79 years",
+  "80-84 years",
+  "85+ years"
+)
+
+# Verify all age groups in data are in our defined order
+actual_age_groups <- unique(sw_raw$age_group)
+missing_groups <- setdiff(actual_age_groups, age_group_order)
+if (length(missing_groups) > 0) {
+  warning("Age groups in data not in predefined order: ", paste(missing_groups, collapse = ", "))
+}
+
+message("Swedish age groups (ordered): ", paste(age_group_order, collapse = ", "))
 
 # Total number of years we are considering
 available_years <- sort(unique(all_data_total$year_mid))
@@ -223,22 +266,77 @@ for (cd in codes_all_years) {
   alert_idx <- alert_idx + 1
 }
 
-if (length(alerts_list) == 0) {
-  message("No codes with 2020–2024 all_diagnoses above 95% prediction interval.")
-} else {
+# Store anomalies for pattern classification
+if (length(alerts_list) > 0) {
   alerts <- do.call(rbind, alerts_list)
-  
-  # Keep only informative columns and sort
-  alerts_report <- alerts[, c(
+  alerts <- alerts[, c(
     "code", "description",
     "year_interval", "year_mid",
     "all_diagnoses", "pred", "pred_lwr", "pred_upr",
     "excess_pct"
   )]
+  message("Found ", length(unique(alerts$code)), " codes with anomalies")
+} else {
+  alerts <- NULL
+  message("No codes with 2020–2024 all_diagnoses above 95% prediction interval.")
+}
+
+# ---------------------------------------------------------------
+# Build COMPLETE report with ALL codes (not just anomalies)
+# ---------------------------------------------------------------
+
+all_report_list <- list()
+
+for (cd in codes_all_years) {
+  df_code <- all_data_total[all_data_total$code == cd, ]
+  df_code <- df_code[!is.na(df_code$all_diagnoses), ]
   
-  alerts_report <- alerts_report[
-    order(alerts_report$code, alerts_report$year_mid),
-  ]
+  # Extract description
+  desc <- df_code$description[which(!is.na(df_code$description))[1]]
+  if (is.na(desc)) desc <- ""
+  
+  # Baseline subset
+  df_base <- df_code[df_code$year_mid %in% baseline_years, ]
+  if (nrow(df_base) < 2) next
+  
+  # Fit model
+  fit <- lm(all_diagnoses ~ year_mid, data = df_base)
+  
+  # Predictions for all years
+  pred_all <- predict(
+    fit,
+    newdata  = data.frame(year_mid = df_code$year_mid),
+    interval = "prediction",
+    level    = 0.95
+  )
+  
+  df_code$pred     <- pred_all[, "fit"]
+  df_code$pred_lwr <- pred_all[, "lwr"]
+  df_code$pred_upr <- pred_all[, "upr"]
+  
+  # Mark anomalies
+  df_code$is_anomaly <- df_code$all_diagnoses > df_code$pred_upr * anomaly_threshold &
+                        df_code$year_mid %in% future_years
+  
+  # Calculate excess percentage (even for non-anomalies, for sorting)
+  df_code$excess_pct <- 100 * ((df_code$all_diagnoses / df_code$pred_upr) - 1)
+  
+  df_code$code <- cd
+  df_code$description <- desc
+  
+  all_report_list[[cd]] <- df_code[, c(
+    "code", "description",
+    "year_interval", "year_mid",
+    "all_diagnoses", "pred", "pred_lwr", "pred_upr",
+    "excess_pct", "is_anomaly"
+  )]
+}
+
+all_report <- do.call(rbind, all_report_list)
+all_report <- all_report[order(all_report$code, all_report$year_mid), ]
+
+message("Complete report contains ", nrow(all_report), " records across ", 
+        length(unique(all_report$code)), " codes")
   
   # ---------------------------------------------------------------
   # Pattern classification helper
@@ -356,49 +454,65 @@ if (length(alerts_list) == 0) {
   }
   
   # ---------------------------------------------------------------
-  # Filter out events with < 100 diagnoses in that year
+  # Pattern classification for codes with anomalies
   # ---------------------------------------------------------------
-  min_events_threshold <- 100
-  alerts_report <- alerts_report[
-    alerts_report$all_diagnoses >= min_events_threshold, 
-  ]
   
-  if (nrow(alerts_report) == 0) {
-    message(
-      "No alerts with all_diagnoses >= ", min_events_threshold,
-      " – skipping HTML report generation."
-    )
+  # Get unique codes that have at least one anomaly
+  codes_with_anomalies <- unique(all_report$code[all_report$is_anomaly])
+  
+  message("Codes with anomalies: ", length(codes_with_anomalies))
+  
+  pattern_by_code <- sapply(
+    codes_with_anomalies,
+    classify_pattern,
+    all_data       = all_data_total,
+    baseline_years = baseline_years,
+    future_years   = future_years
+  )
+  names(pattern_by_code) <- codes_with_anomalies
+  
+  # Add pattern classification to the full report
+  all_report$pattern_type <- ""
+  for (cd in codes_with_anomalies) {
+    pattern <- pattern_by_code[[cd]]
+    if (!is.null(pattern) && !is.na(pattern)) {
+      all_report$pattern_type[all_report$code == cd] <- pattern
+    }
+  }
+  
+  # ---------------------------------------------------------------
+  # Filter by minimum events threshold
+  # ---------------------------------------------------------------
+  min_events_threshold <- 50
+  all_report_filtered <- all_report[all_report$all_diagnoses >= min_events_threshold, ]
+  
+  message("After filtering (>= ", min_events_threshold, " diagnoses): ",
+          nrow(all_report_filtered), " records across ",
+          length(unique(all_report_filtered$code)), " codes")
+  
+  if (nrow(all_report_filtered) == 0) {
+    message("No records with all_diagnoses >= ", min_events_threshold,
+            " – skipping HTML report generation.")
   } else {
-    # Compute pattern classification per code
-    codes_for_patterns <- unique(alerts_report$code)
-    pattern_by_code <- sapply(
-      codes_for_patterns,
-      classify_pattern,
-      all_data       = all_data_total,
-      baseline_years = baseline_years,
-      future_years   = future_years
-    )
-    names(pattern_by_code) <- codes_for_patterns
-    
-    alerts_report$pattern_type <- unname(pattern_by_code[alerts_report$code])
-    alerts_report$pattern_type[is.na(alerts_report$pattern_type)] <- ""
+    # Use all_report_filtered for HTML generation
+    alerts_report <- all_report_filtered
 
     # Unique pattern types (non-empty) for the dropdown
     pattern_options <- sort(unique(alerts_report$pattern_type))
     pattern_options <- pattern_options[nzchar(pattern_options)]
 
-    # Reorder columns to put pattern near the front
+    # Reorder columns to put pattern and anomaly near the front
     alerts_report <- alerts_report[, c(
-      "code", "description", "pattern_type",
+      "code", "description", "pattern_type", "is_anomaly",
       "year_interval", "year_mid",
       "all_diagnoses", "pred", "pred_lwr", "pred_upr",
       "excess_pct"
     )]
     
-    # Save filtered alerts as CSV
-    alerts_csv_path <- file.path(out_dir_report, "diagnosis_trend_alerts.csv")
+    # Save complete report as CSV
+    alerts_csv_path <- file.path(out_dir_report, "diagnosis_trend_complete.csv")
     write.csv(alerts_report, file = alerts_csv_path, row.names = FALSE)
-    message("Trend alerts CSV written to: ", alerts_csv_path)
+    message("Complete trend report CSV written to: ", alerts_csv_path)
     
     ### ---- Build main HTML report ----
     html_path <- file.path(out_dir_report, "diagnosis_trend_report.html")
@@ -414,40 +528,54 @@ if (length(alerts_list) == 0) {
       "th { background: #f0f0f0; }",
       ".code { font-family: monospace; }",
       ".pos { color: #b30000; font-weight: bold; }",
+      ".anomaly-row { background-color: #fff3cd; }",
+      ".anomaly-yes { color: #b30000; font-weight: bold; }",
       "a { color: #004c99; text-decoration: none; }",
       "a:hover { text-decoration: underline; }",
+      ".filter-section { margin: 10px 0; padding: 10px; background: #f8f9fa; border: 1px solid #dee2e6; }",
       "</style>",
       "<script type='text/javascript'>",
       "function normalize(str){ return (str || '').toString().toLowerCase(); }",
       "function applyFilters(){",
       "  var pattern = normalize(document.getElementById('patternFilter').value);",
       "  var text = normalize(document.getElementById('textFilter').value);",
+      "  var showAnomalies = document.getElementById('anomalyFilter').value;",
       "  var rows = document.querySelectorAll('#alertsTable tbody tr');",
       "  rows.forEach(function(row){",
       "    var p = normalize(row.getAttribute('data-pattern'));",
       "    var s = normalize(row.getAttribute('data-search'));",
+      "    var isAnomaly = row.getAttribute('data-anomaly') === 'true';",
       "    var matchPattern = !pattern || p === pattern;",
       "    var matchText = !text || s.indexOf(text) !== -1;",
-      "    row.style.display = (matchPattern && matchText) ? '' : 'none';",
+      "    var matchAnomaly = showAnomalies === 'all' || (showAnomalies === 'anomalies' && isAnomaly);",
+      "    row.style.display = (matchPattern && matchText && matchAnomaly) ? '' : 'none';",
       "  });",
       "}",
       "document.addEventListener('DOMContentLoaded', function(){",
       "  var pf = document.getElementById('patternFilter');",
       "  if (pf) pf.addEventListener('change', applyFilters);",
+      "  var af = document.getElementById('anomalyFilter');",
+      "  if (af) af.addEventListener('change', applyFilters);",
       "  var tf = document.getElementById('textFilter');",
       "  if (tf) tf.addEventListener('keyup', applyFilters);",
       "});",
       "</script>",
       "</head><body>\n",
-      "<h1>Swedish Diagnosis codes with 2020–2024 counts above 95% prediction interval</h1>\n",
-      "<p>Baseline years for linear trend: 2008–2019.</p>\n",
-      "<p>Only years with at least ", min_events_threshold, 
-      " diagnoses are shown in this report.</p>\n"
+      "<h1>Swedish Diagnosis Trend Report (2020–2024 vs 2008–2019 baseline)</h1>\n",
+      "<p>Baseline years for linear trend: 2008–2019. Anomalies = diagnoses >5% above 95% prediction interval.</p>\n",
+      "<p>Showing all diagnosis codes with at least ", min_events_threshold, 
+      " diagnoses in any year.</p>\n"
     )
     
     table_header <- paste0(
-      # Pattern dropdown above the table
-      "<div style='margin:10px 0;'>",
+      # Filter section above the table
+      "<div class='filter-section'>",
+      "<label for='anomalyFilter'><strong>Show:</strong></label> ",
+      "<select id='anomalyFilter'>",
+      "<option value='all'>All diagnoses</option>",
+      "<option value='anomalies'>Anomalies only</option>",
+      "</select>",
+      " &nbsp;&nbsp; ",
       "<label for='patternFilter'><strong>Pattern filter:</strong></label> ",
       "<select id='patternFilter'>",
       "<option value=''>All patterns</option>",
@@ -473,6 +601,7 @@ if (length(alerts_list) == 0) {
       "style='width:100%;box-sizing:border-box;font-size:11px;'/>",
       "</th>",
       "<th>Pattern</th>",
+      "<th>Anomaly</th>",
       "<th>Year</th>",
       "<th>Observed diagnoses</th>",
       "<th>Predicted</th>",
@@ -487,7 +616,7 @@ if (length(alerts_list) == 0) {
       gsub("[^A-Za-z0-9]+", "_", cd)
     }
     
-    # Build table rows with clickable code/description and pattern
+    # Build table rows with clickable code/description, pattern, and anomaly status
     row_html <- apply(alerts_report, 1, function(r) {
       code_raw <- r[["code"]]
       code_id  <- make_code_id(code_raw)
@@ -495,6 +624,7 @@ if (length(alerts_list) == 0) {
       
       desc_raw    <- ifelse(is.na(r[["description"]]), "", r[["description"]])
       pattern_raw <- ifelse(is.na(r[["pattern_type"]]), "", r[["pattern_type"]])
+      is_anomaly  <- as.logical(r[["is_anomaly"]])
       
       code_link <- sprintf(
         "<a href='%s'>%s</a>",
@@ -508,16 +638,23 @@ if (length(alerts_list) == 0) {
       )
       pattern_html  <- htmltools::htmlEscape(pattern_raw)
       
+      # Anomaly display
+      anomaly_text <- if (is_anomaly) "Yes" else ""
+      anomaly_class <- if (is_anomaly) "anomaly-yes" else ""
+      row_class <- if (is_anomaly) "anomaly-row" else ""
+      
       # Data attributes used by JS for filtering
       search_text <- tolower(paste(code_raw, desc_raw))
       pattern_attr <- htmltools::htmlEscape(pattern_raw)
       search_attr  <- htmltools::htmlEscape(search_text)
+      anomaly_attr <- tolower(as.character(is_anomaly))
       
       sprintf(
-        "<tr data-pattern='%s' data-search='%s'>
+        "<tr class='%s' data-pattern='%s' data-search='%s' data-anomaly='%s'>
            <td class='code'>%s</td>
            <td>%s</td>
            <td>%s</td>
+           <td class='%s'>%s</td>
            <td>%s</td>
            <td>%s</td>
            <td>%0.1f</td>
@@ -525,11 +662,15 @@ if (length(alerts_list) == 0) {
            <td>%0.1f</td>
            <td class='pos'>%0.1f%%</td>
          </tr>\n",
+        row_class,
         pattern_attr,
         search_attr,
+        anomaly_attr,
         code_link,
         desc_link,
         pattern_html,
+        anomaly_class,
+        anomaly_text,
         r[["year_mid"]],
         format(as.numeric(r[["all_diagnoses"]]), big.mark = ",", scientific = FALSE),
         as.numeric(r[["pred"]]),
@@ -563,9 +704,13 @@ if (length(alerts_list) == 0) {
       desc <- df_code$description[which(!is.na(df_code$description))[1]]
       if (is.na(desc)) desc <- ""
       
-      # Pattern from precomputed vector
-      pattern <- pattern_by_code[[cd]]
-      if (is.null(pattern) || is.na(pattern)) pattern <- ""
+      # Pattern from precomputed vector (only exists for codes with anomalies)
+      pattern <- if (cd %in% names(pattern_by_code)) {
+        p <- pattern_by_code[[cd]]
+        if (is.null(p) || is.na(p)) "" else p
+      } else {
+        ""
+      }
       
       # Baseline subset & model
       df_base <- df_code[df_code$year_mid %in% baseline_years, , drop = FALSE]
@@ -637,12 +782,17 @@ if (length(alerts_list) == 0) {
         df_code_age <- diag_age[diag_age$code == cd, , drop = FALSE]
         
         if (nrow(df_code_age) > 0) {
-          # Order by year
+          # Convert age_group to factor with explicit ordering
+          df_code_age$age_group <- factor(df_code_age$age_group, levels = age_group_order)
+          
+          # Order by age group (youngest first), then year
           df_code_age <- df_code_age %>%
             arrange(age_group, year_mid)
 
-          # Create one trend plot per age group: cases per 100k
-          age_groups <- unique(df_code_age$age_group)
+          # Get unique age groups present for this code (in correct order)
+          age_groups <- levels(df_code_age$age_group)
+          age_groups <- age_groups[age_groups %in% df_code_age$age_group]
+          
           age_plots_html <- c()
           
           for (ag in age_groups) {
@@ -738,12 +888,13 @@ if (length(alerts_list) == 0) {
             )
           }
           
-          # Age-specific data table
+          # Age-specific data table (ordered youngest to oldest)
           df_age_table <- df_code_age %>%
-            arrange(age_group, year_mid) %>%
             mutate(
+              age_group = factor(age_group, levels = age_group_order),
               rate_per_100k = round(rate_per_100k, 2)
-            )
+            ) %>%
+            arrange(age_group, year_mid)
           
           age_rows <- apply(df_age_table, 1, function(r) {
             sprintf(
@@ -762,6 +913,7 @@ if (length(alerts_list) == 0) {
           
           age_section_html <- paste0(
             "<h2>Age-specific incidence (per 100,000)</h2>",
+            "<p><em>Age groups shown in order from youngest to oldest.</em></p>",
             paste(age_plots_html, collapse = "\n"),
             "<h3>Age-specific data</h3>",
             "<table>",
