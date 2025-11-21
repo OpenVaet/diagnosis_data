@@ -30,6 +30,11 @@ my @diagnoses    = ();
 # Will hold the data parsed.
 my %diag_data    = ();
 
+my $output_file  = "data/sw/diagnosis_csv/diagnosis_2008_2024.csv";
+my $state_file   = "data/sw/diagnosis_csv/diagnosis_2008_2024.state.json";
+
+my $json         = JSON->new->utf8->canonical(1);
+
 # Age groups targeted.
 my %age_groups   = ();
 $age_groups{1}   = '0-4 years';
@@ -74,7 +79,8 @@ expand_all_diags();
 ### 8. Collect all leaf-diagnosis checkboxes (children only)
 collect_diagnosis();
 ### 9. Process diagnoses in batches of 100 (select 100 codes at a time)
-process_diagnoses();
+my $last_completed_batch = load_state();
+process_diagnoses($last_completed_batch);
 ### 10. Print data.
 print_data();
 
@@ -177,6 +183,8 @@ sub collect_diagnosis {
 }
 
 sub process_diagnoses {
+    my ($last_completed_batch) = @_;
+
     my $batch_size = 100;
     my $total      = scalar @diagnoses;
     my $start      = 0;
@@ -189,26 +197,20 @@ sub process_diagnoses {
         my $end = $start + $batch_size - 1;
         $end = $total - 1 if $end >= $total;
 
+        # --- NEW: skip batches we already processed ---
+        if ($batch_no <= ($last_completed_batch // 0)) {
+            say "=== Batch $batch_no: diagnoses $start .. $end (of $total) => already processed, skipping ===";
+            $start = $end + 1;
+            next;
+        }
+
         say "=== Batch $batch_no: diagnoses $start .. $end (of $total) ===";
 
-        # 1) Unselect previous batch (so we never exceed 100 checked)
-        if (@prev_batch_ids) {
-            my $un = 0;
-            for my $id (@prev_batch_ids) {
-                eval {
-                    my $cb = $driver->find_element(
-                        '//div[@id="valListArea_DIA_AR_SVOV"]//input[@id="' . $id . '"]',
-                        'xpath'
-                    );
-                    $driver->execute_script('arguments[0].scrollIntoView(true);', $cb);
-                    select undef, undef, undef, 0.05;
-                    $cb->click;    # click again to uncheck
-                    $un++;
-                };
-                warn "Failed to uncheck $id: $@" if $@;
-            }
-            say "\tUnselected $un diagnoses from previous batch.";
-        }
+        # clear any old data in memory for this batch
+        %diag_data = ();
+
+        # 1) Unselect previous diagnoses
+        unselect_all_diagnoses();
 
         # 2) Select the current batch
         my @current_batch_ids;
@@ -244,14 +246,14 @@ sub process_diagnoses {
         STDOUT->printflush("\rBatch $batch_no: selected $clicked diagnoses");
         say "";
 
-        # 3) Select an age, then view all.
-        for my $age_group_code (sort{$a <=> $b} keys %age_groups) {
+        # 3) Loop over ages, fetch table, fill %diag_data as you already do
+        for my $age_group_code (sort { $a <=> $b } keys %age_groups) {
             my $age_group = $age_groups{$age_group_code} // die;
             select_specific_age($age_group_code, $age_group);
             click_view_all();
             sleep 2;
 
-            # Parsing data.
+            # --- your existing parsing code stays the same ---
             my $content;
             my ($parsing_success, $parsing_attempts) = (0, 0);
             while ($parsing_success == 0) {
@@ -269,22 +271,19 @@ sub process_diagnoses {
                     $parsing_success = 1;
                 }
             }
-            my $tree           = HTML::Tree->new();
+            my $tree = HTML::Tree->new();
             $tree->parse($content);
 
-            # Fetching data summary for verification.
-            my $summary_span = $tree->look_down(id=>"ph1_lblTableTitle");
-            my $summary = $summary_span->as_trimmed_text;
+            my $summary_span = $tree->look_down(id => "ph1_lblTableTitle");
+            my $summary      = $summary_span->as_trimmed_text;
             $summary =~ s/,/-/g;
-            $diag_data{$age_group_code}->{'age_group'} = $age_group;
-            $diag_data{$age_group_code}->{'summary'}   = $summary;
+            $diag_data{$age_group_code}{'age_group'} = $age_group;
+            $diag_data{$age_group_code}{'summary'}   = $summary;
 
-            # Fetching table data.
-            my $table = $tree->look_down(id=>"ph1_GridView1");
+            my $table = $tree->look_down(id => "ph1_GridView1");
             my @trs   = $table->find('tr');
 
-            # Parsing header & rows.
-            my %headers = ();
+            my %headers;
             for my $tr (@trs) {
                 if ($tr->find('th')) {
                     my @ths = $tr->find('th');
@@ -294,9 +293,9 @@ sub process_diagnoses {
                         $headers{$n} = $th->as_trimmed_text;
                     }
                 } else {
-                    my %row = ();
+                    my %row;
                     my @tds = $tr->find('td');
-                    my $n = 0;
+                    my $n   = 0;
                     for my $td (@tds) {
                         $n++;
                         my $label = $headers{$n} // die;
@@ -307,21 +306,23 @@ sub process_diagnoses {
                     for my $label (keys %row) {
                         next if $label eq 'Measure' || $label eq 'Diagnos';
                         my $value = $row{$label} // die;
-                        $diag_data{$age_group_code}->{'measures'}->{$measure}->{$diagnos}->{$label} = $value;
+                        $diag_data{$age_group_code}{'measures'}{$measure}{$diagnos}{$label} = $value;
                     }
                 }
             }
 
-            # Returning to previous screen.
             return_to_form();
-
             sleep 2;
-
-            # Unselect all ages.
             unselect_all_ages();
         }
 
-        # 4) Prepare for next batch
+        # 4) Write what we just collected for this batch to CSV (append)
+        print_data_for_batch($batch_no);
+
+        # 5) Save checkpoint so we can resume later
+        save_state($batch_no);
+
+        # 6) Prepare for next batch
         @prev_batch_ids = @current_batch_ids;
         $start          = $end + 1;
     }
@@ -406,7 +407,7 @@ sub click_view_all {
 
 sub unselect_all_diagnoses {
     my $unselect_all_diags_button = $driver->find_element(
-        q{//a[@id="ph1_val_dia_ar_svov_hlDel"]},
+        q{//a[@id="ph1_val_dia_ar_sv_hlDel"]},
         'xpath'
     );
 
@@ -462,21 +463,88 @@ sub return_to_form {
 
 }
 
-sub print_data {
-    open my $out, '>', "data/sw/diagnosis_csv/diagnosis_2008_2024.csv";
-    say $out "age_group_code,age_group,summary,measure,diagnos,year,value";
-    for my $age_group_code (sort{$a <=> $b} keys %diag_data) {
-        my $age_group = $diag_data{$age_group_code}->{'age_group'} // die;
-        my $summary = $diag_data{$age_group_code}->{'summary'} // die;
-        for my $measure (sort keys %{$diag_data{$age_group_code}->{'measures'}}) {
-            for my $diagnos (sort keys %{$diag_data{$age_group_code}->{'measures'}->{$measure}}) {
-                for my $year (sort{$a <=> $b} keys %{$diag_data{$age_group_code}->{'measures'}->{$measure}->{$diagnos}}) {
-                    my $value = $diag_data{$age_group_code}->{'measures'}->{$measure}->{$diagnos}->{$year} // die;
+sub print_data_for_batch {
+    my ($batch_no) = @_;
+
+    my $file_exists = -e $output_file ? 1 : 0;
+
+    open my $out, '>>', $output_file
+        or die "Can't open $output_file for appending: $!";
+
+    # Write header only once (when file is first created)
+    if (!$file_exists) {
+        say $out "batch_no,age_group_code,age_group,summary,measure,diagnos,year,value";
+    }
+
+    for my $age_group_code (sort { $a <=> $b } keys %diag_data) {
+        my $age_group = $diag_data{$age_group_code}{'age_group'} // die;
+        my $summary   = $diag_data{$age_group_code}{'summary'}   // die;
+
+        for my $measure (sort keys %{ $diag_data{$age_group_code}{'measures'} }) {
+            for my $diagnos (sort keys %{ $diag_data{$age_group_code}{'measures'}{$measure} }) {
+                for my $year (
+                    sort { $a <=> $b }
+                    keys %{ $diag_data{$age_group_code}{'measures'}{$measure}{$diagnos} }
+                  )
+                {
+                    my $value = $diag_data{$age_group_code}{'measures'}{$measure}{$diagnos}{$year} // die;
                     $value =~ s/,//g;
-                    say $out "$age_group_code,$age_group,$summary,$measure,$diagnos,$year,$value";
+                    say $out join(
+                        ',',
+                        $batch_no,
+                        $age_group_code,
+                        $age_group,
+                        $summary,
+                        $measure,
+                        $diagnos,
+                        $year,
+                        $value,
+                    );
                 }
             }
         }
     }
+
     close $out;
+    say "Wrote data for batch $batch_no to $output_file";
+
+    # free memory (optional but nice)
+    %diag_data = ();
+}
+
+sub load_state {
+    # If no state file, we start from scratch
+    return 0 unless -e $state_file;
+
+    open my $fh, '<', $state_file
+        or die "Can't open $state_file for reading: $!";
+    local $/;
+    my $json_text = <$fh>;
+    close $fh;
+
+    my $data = eval { $json->decode($json_text) };
+    if ($@ or ref $data ne 'HASH') {
+        warn "State file $state_file is invalid, starting from batch 0.";
+        return 0;
+    }
+
+    my $last = $data->{last_completed_batch} // 0;
+    say "Resuming from batch " . ($last + 1) . " (last completed batch: $last)";
+    return $last;
+}
+
+sub save_state {
+    my ($batch_no) = @_;
+
+    my %state = (
+        last_completed_batch => $batch_no,
+        saved_at             => scalar localtime(),
+    );
+
+    open my $fh, '>', $state_file
+        or die "Can't open $state_file for writing: $!";
+    print $fh $json->encode(\%state);
+    close $fh;
+
+    say "Saved state: last_completed_batch = $batch_no";
 }
