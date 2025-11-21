@@ -94,7 +94,7 @@ To download the Swedish data, you'll need the Selenium [chromedriver.exe](https:
 
 Then run:
 
-1. `perl get_swedish_data.pl`
+1. `perl sw_get_diagnosis_data.pl`
 
 ## Finland
 
