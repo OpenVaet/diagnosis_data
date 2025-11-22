@@ -5,6 +5,16 @@ library(dplyr)
 library(tidyr)
 library(magrittr) 
 
+# ---- Helper function for HTML escaping ----
+html_escape <- function(text) {
+  text <- gsub("&", "&amp;", text, fixed = TRUE)
+  text <- gsub("<", "&lt;", text, fixed = TRUE)
+  text <- gsub(">", "&gt;", text, fixed = TRUE)
+  text <- gsub('"', "&quot;", text, fixed = TRUE)
+  text <- gsub("'", "&#39;", text, fixed = TRUE)
+  text
+} 
+
 # Create output directory if it doesn't exist
 data_dir_csv  <- file.path("data", "sw", "diagnosis_csv")
 out_dir_report  <- file.path("output", "sw", "diagnosis_report")
@@ -583,8 +593,8 @@ message("Complete report contains ", nrow(all_report), " records across ",
         sapply(pattern_options, function(p) {
           sprintf(
             "<option value='%s'>%s</option>",
-            htmltools::htmlEscape(p),
-            htmltools::htmlEscape(p)
+            html_escape(p),
+            html_escape(p)
           )
         }),
         collapse = ""
@@ -629,14 +639,14 @@ message("Complete report contains ", nrow(all_report), " records across ",
       code_link <- sprintf(
         "<a href='%s'>%s</a>",
         detail_file,
-        htmltools::htmlEscape(code_raw)
+        html_escape(code_raw)
       )
       desc_link <- sprintf(
         "<a href='%s'>%s</a>",
         detail_file,
-        htmltools::htmlEscape(desc_raw)
+        html_escape(desc_raw)
       )
-      pattern_html  <- htmltools::htmlEscape(pattern_raw)
+      pattern_html  <- html_escape(pattern_raw)
       
       # Anomaly display
       anomaly_text <- if (is_anomaly) "Yes" else ""
@@ -645,8 +655,8 @@ message("Complete report contains ", nrow(all_report), " records across ",
       
       # Data attributes used by JS for filtering
       search_text <- tolower(paste(code_raw, desc_raw))
-      pattern_attr <- htmltools::htmlEscape(pattern_raw)
-      search_attr  <- htmltools::htmlEscape(search_text)
+      pattern_attr <- html_escape(pattern_raw)
+      search_attr  <- html_escape(search_text)
       anomaly_attr <- tolower(as.character(is_anomaly))
       
       sprintf(
@@ -880,10 +890,10 @@ message("Complete report contains ", nrow(all_report), " records across ",
               sprintf(
                 "<h3>Age group: %s</h3>
                  <img src='%s' alt='Rate trend for %s (%s)' style='max-width:100%%;height:auto;border:1px solid #ccc;' />",
-                htmltools::htmlEscape(ag),
+                html_escape(ag),
                 basename(png_ag),
-                htmltools::htmlEscape(cd),
-                htmltools::htmlEscape(ag)
+                html_escape(cd),
+                html_escape(ag)
               )
             )
           }
@@ -958,7 +968,7 @@ message("Complete report contains ", nrow(all_report), " records across ",
       
       detail_html <- paste0(
         "<!DOCTYPE html>\n<html><head><meta charset='UTF-8'>",
-        "<title>Trend detail for ", htmltools::htmlEscape(cd), "</title>",
+        "<title>Trend detail for ", html_escape(cd), "</title>",
         "<style>",
         "body { font-family: Arial, sans-serif; }",
         "table { border-collapse: collapse; width: 100%; margin-top: 16px; }",
@@ -970,15 +980,15 @@ message("Complete report contains ", nrow(all_report), " records across ",
         "a:hover { text-decoration: underline; }",
         "</style>",
         "</head><body>",
-        "<h1>Trend detail for code ", htmltools::htmlEscape(cd), "</h1>",
-        "<p><strong>Description:</strong> ", htmltools::htmlEscape(desc), "</p>",
+        "<h1>Trend detail for code ", html_escape(cd), "</h1>",
+        "<p><strong>Description:</strong> ", html_escape(desc), "</p>",
         if (nzchar(pattern)) paste0(
           "<p><strong>Pattern classification:</strong> ",
-          htmltools::htmlEscape(pattern), "</p>"
+          html_escape(pattern), "</p>"
         ) else "",
         "<p><a href='diagnosis_trend_report.html'>&larr; Back to main report</a></p>",
         "<img src='", basename(png_file), 
-        "' alt='Trend chart for ", htmltools::htmlEscape(cd), 
+        "' alt='Trend chart for ", html_escape(cd), 
         "' style='max-width:100%;height:auto;border:1px solid #ccc;' />",
         "<h2>Yearly data (all ages)</h2>",
         "<table>",

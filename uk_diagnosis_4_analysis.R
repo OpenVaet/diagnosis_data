@@ -101,7 +101,7 @@ convert_diagnosis_file <- function(year_range) {
   
   message("Processing ", year_range, " ...")
   
-  # Read sheet with no header (we'll detect header & data manually)
+  # Read sheet with no header (we’ll detect header & data manually)
   df_raw <- read_excel(
     path      = xlsx_path,
     sheet     = "All Diagnoses 4 Character",
@@ -468,9 +468,9 @@ codes_all_years <- names(code_years_unique)[
 message("Number of codes present in ALL years: ",
         length(codes_all_years))
 
-# Include all diagnoses above the upper prediction interval (complete index)
-# Set to 1.0 to capture anything above the 95% PI, not just those significantly above
-anomaly_threshold <- 1.0
+# We only consider something "abnormally high" if it is at least 5% above
+# the upper prediction interval
+anomaly_threshold <- 1.05
 
 # Baseline years: 2015–2019 (i.e. intervals 2014-2015 ... 2018-2019)
 baseline_years  <- 2015:2019
@@ -665,18 +665,17 @@ if (length(alerts_list) == 0) {
 
   
   # ---------------------------------------------------------------
-  # 3a. Complete index - no filtering by event count
+  # 3a. Filter out events with < 300 diagnoses in that year
   # ---------------------------------------------------------------
-  # Set to 0 to include ALL diagnoses in the report (complete index)
-  # Note: anomaly_threshold is set to 1.0 to capture all diagnoses above prediction interval
-  min_events_threshold <- 0
+  min_events_threshold <- 300
   alerts_report <- alerts_report[
     alerts_report$all_diagnoses >= min_events_threshold, 
   ]
   
   if (nrow(alerts_report) == 0) {
     message(
-      "No alerts found – skipping HTML report generation."
+      "No alerts with all_diagnoses >= ", min_events_threshold,
+      " – skipping HTML report generation."
     )
   } else {
     # Compute pattern classification per code (only for codes in filtered alerts)
@@ -751,7 +750,8 @@ if (length(alerts_list) == 0) {
       "</head><body>\n",
       "<h1>United Kingdom Diagnosis codes with 2020–2024 counts above 95% prediction interval</h1>\n",
       "<p>Baseline years for linear trend: 2015–2019 (intervals 2014–2015 to 2018–2019).</p>\n",
-      "<p><strong>Complete index: All diagnoses above the upper 95% prediction interval are shown (no minimum event threshold, no additional filtering).</strong></p>\n"
+      "<p>Only years with at least ", min_events_threshold, 
+      " diagnoses are shown in this report.</p>\n"
     )
 
     
